@@ -4,6 +4,7 @@ import { sync as commandExistsSync } from 'command-exists';
 import git from 'isomorphic-git';
 import http from 'isomorphic-git/http/node';
 import simpleGit from 'simple-git';
+import { isBunRuntime } from '../runtime.js';
 
 /** @type {{ AUTO: 'auto', SYSTEM: 'system', BUILTIN: 'builtin' }} */
 export const GIT_BACKENDS = {
@@ -31,6 +32,10 @@ function resolveBackend(preferredBackend) {
 
     if (backend === GIT_BACKENDS.SYSTEM || (backend === GIT_BACKENDS.AUTO && systemGitAvailable)) {
         return GIT_BACKENDS.SYSTEM;
+    }
+
+    if (isBunRuntime()) {
+        throw new Error('The builtin git backend is not currently supported on Bun. Install system git or set git.backend to "system".');
     }
 
     return GIT_BACKENDS.BUILTIN;

@@ -5733,6 +5733,143 @@
                 </button>
             </div>
         </div>
+        <div id="agents-button" class="drawer">
+            <div class="drawer-toggle drawer-header">
+                <div id="AgentsDrawerIcon" class="drawer-icon fa-solid fa-robot fa-fw closedIcon" title="Agents" data-i18n="[title]Agents"></div>
+            </div>
+            <div id="AgentsPanel" class="drawer-content closedDrawer">
+                <div id="AgentsPanelheader" class="fa-solid fa-grip drag-grabber"></div>
+                <div class="agents-panel-hero flex-container alignitemscenter gap10px spaceBetween flexWrap">
+                    <div class="flex-container flexFlowColumn gap4px minWidth0">
+                        <div class="agents-panel-kicker">✦ Agents Control ✦</div>
+                        <h3 class="margin0">
+                            <span data-i18n="Agents">Agents</span>
+                        </h3>
+                        <small class="text_muted" data-i18n="Agents are AI helpers that can inject context before generation, transform final replies after generation, or run manually.">Agents are AI helpers that can inject context before generation, transform final replies after generation, or run manually.</small>
+                    </div>
+                    <label class="checkbox_label flexNoGap agents-global-toggle" for="agents_global_enabled" title="Enable or disable all agents" data-i18n="[title]Enable or disable all agents">
+                        <input id="agents_global_enabled" type="checkbox">
+                        <span data-i18n="Enable Agents">Enable Agents</span>
+                    </label>
+                </div>
+                <div id="agents_holder" class="margin5 flex-container flexFlowColumn gap10px">
+                    <div class="agents-toolbar flex-container flexWrap gap10px alignitemscenter">
+                        <div id="agents_new_agent" class="menu_button menu_button_icon" title="Create a new agent" data-i18n="[title]Create a new agent">
+                            <i class="fa-solid fa-plus"></i>
+                            <span data-i18n="New Agent">New Agent</span>
+                        </div>
+                        <div id="agents_refresh_profiles" class="menu_button menu_button_icon" title="Refresh connection profiles" data-i18n="[title]Refresh connection profiles">
+                            <i class="fa-solid fa-rotate"></i>
+                            <span data-i18n="Refresh Profiles">Refresh Profiles</span>
+                        </div>
+                    </div>
+                    <div id="agents_editor" class="agents-editor displayNone">
+                        <div class="agents-editor-header flex-container alignitemscenter gap10px spaceBetween flexWrap">
+                            <h4 class="margin0" data-i18n="Agent Editor">Agent Editor</h4>
+                            <span class="agents-editor-status">Editing</span>
+                        </div>
+                        <input id="agents_editor_id" type="hidden">
+                        <div class="flex-container flexWrap gap10px">
+                            <label class="flex-container flexFlowColumn gap4px flex1 minWidth250px">
+                                <small data-i18n="Name">Name</small>
+                                <input id="agents_editor_name" class="text_pole" type="text" placeholder="Agent name" data-i18n="[placeholder]Agent name">
+                            </label>
+                            <label class="flex-container flexFlowColumn gap4px flex1 minWidth250px">
+                                <small data-i18n="Phase">Phase</small>
+                                <select id="agents_editor_phase" class="text_pole">
+                                    <option value="pre" data-i18n="Pre-generation">Pre-generation</option>
+                                    <option value="post" data-i18n="Post-generation">Post-generation</option>
+                                    <option value="manual" data-i18n="Manual only">Manual only</option>
+                                </select>
+                            </label>
+                        </div>
+                        <label class="flex-container flexFlowColumn gap4px">
+                            <small data-i18n="Description">Description</small>
+                            <input id="agents_editor_description" class="text_pole" type="text" placeholder="Optional description" data-i18n="[placeholder]Optional description">
+                        </label>
+                        <label class="flex-container flexFlowColumn gap4px">
+                            <small data-i18n="Connection Profile">Connection Profile</small>
+                            <select id="agents_editor_connection_profile" class="text_pole"></select>
+                        </label>
+                        <label class="flex-container flexFlowColumn gap4px">
+                            <small data-i18n="Agent Prompt">Agent Prompt</small>
+                            <textarea id="agents_editor_prompt" class="text_pole textarea_compact" rows="8" placeholder="Tell this agent what to do. Supports normal SillyTavern macros." data-i18n="[placeholder]Tell this agent what to do. Supports normal SillyTavern macros."></textarea>
+                        </label>
+                        <div class="flex-container flexWrap gap10px">
+                            <label class="checkbox_label"><input id="agents_editor_enabled" type="checkbox"> <span data-i18n="Enabled">Enabled</span></label>
+                            <label class="checkbox_label"><input id="agents_editor_include_chat" type="checkbox"> <span data-i18n="Chat">Chat</span></label>
+                            <label class="checkbox_label"><input id="agents_editor_include_character" type="checkbox"> <span data-i18n="Character">Character</span></label>
+                            <label class="checkbox_label"><input id="agents_editor_include_persona" type="checkbox"> <span data-i18n="Persona">Persona</span></label>
+                            <label class="checkbox_label"><input id="agents_editor_include_world_info" type="checkbox"> <span data-i18n="World Info">World Info</span></label>
+                            <label class="checkbox_label"><input id="agents_editor_include_main_reply" type="checkbox"> <span data-i18n="Main Reply">Main Reply</span></label>
+                        </div>
+                        <div class="flex-container flexWrap gap10px">
+                            <label class="flex-container flexFlowColumn gap4px flex1 minWidth200px">
+                                <small data-i18n="Output Mode">Output Mode</small>
+                                <select id="agents_editor_output_type" class="text_pole">
+                                    <option value="inject" data-i18n="Inject hidden context">Inject hidden context</option>
+                                    <option value="rewrite" data-i18n="Rewrite message">Rewrite message</option>
+                                    <option value="append" data-i18n="Append to message">Append to message</option>
+                                    <option value="metadata" data-i18n="Save metadata only">Save metadata only</option>
+                                </select>
+                            </label>
+                            <label id="agents_output_role_wrap" class="flex-container flexFlowColumn gap4px flex1 minWidth200px">
+                                <small data-i18n="Injection Role">Injection Role</small>
+                                <select id="agents_editor_output_role" class="text_pole">
+                                    <option value="system" data-i18n="System">System</option>
+                                    <option value="user" data-i18n="User">User</option>
+                                    <option value="assistant" data-i18n="Assistant">Assistant</option>
+                                </select>
+                            </label>
+                            <label id="agents_store_key_wrap" class="flex-container flexFlowColumn gap4px flex1 minWidth200px">
+                                <small data-i18n="Metadata Key">Metadata Key</small>
+                                <input id="agents_editor_store_key" class="text_pole" type="text" placeholder="agent_result" data-i18n="[placeholder]agent_result">
+                            </label>
+                        </div>
+                        <div id="agents_structured_wrap" class="flex-container flexWrap gap10px alignitemscenter">
+                            <label class="checkbox_label"><input id="agents_editor_output_structured" type="checkbox"> <span>Structured JSON revision output</span></label>
+                            <small class="text_muted">Lets later post agents see what earlier passes changed and what should not be reintroduced.</small>
+                        </div>
+                        <div class="flex-container flexWrap gap10px">
+                            <label class="flex-container flexFlowColumn gap4px flex1 minWidth200px">
+                                <small data-i18n="Priority">Priority</small>
+                                <input id="agents_editor_priority" class="text_pole" type="number" step="1">
+                            </label>
+                            <label class="flex-container flexFlowColumn gap4px flex1 minWidth200px">
+                                <small data-i18n="Max Tokens">Max Tokens</small>
+                                <input id="agents_editor_max_tokens" class="text_pole" type="number" min="16" max="16000" step="1">
+                            </label>
+                            <label class="flex-container flexFlowColumn gap4px flex1 minWidth200px">
+                                <small data-i18n="Past Context Messages">Past Context Messages</small>
+                                <input id="agents_editor_past_message_count" class="text_pole" type="number" min="0" max="50" step="1">
+                            </label>
+                        </div>
+                        <div class="agents-advanced-settings flex-container flexFlowColumn gap6px">
+                            <small class="text_muted agents-section-caption">Advanced run conditions</small>
+                            <div class="flex-container flexWrap gap10px">
+                                <label class="checkbox_label"><input id="agents_editor_only_group_chats" type="checkbox"> <span>Groups only</span></label>
+                                <label class="checkbox_label"><input id="agents_editor_only_character_chats" type="checkbox"> <span>1:1 chats only</span></label>
+                                <label class="checkbox_label"><input id="agents_editor_skip_swipe" type="checkbox"> <span>Skip swipes</span></label>
+                                <label class="checkbox_label"><input id="agents_editor_skip_continue" type="checkbox"> <span>Skip continue</span></label>
+                                <label class="checkbox_label"><input id="agents_editor_skip_impersonate" type="checkbox"> <span>Skip impersonate</span></label>
+                                <label class="checkbox_label"><input id="agents_editor_skip_quiet" type="checkbox"> <span>Skip quiet draft runs</span></label>
+                            </div>
+                        </div>
+                        <div class="flex-container gap10px">
+                            <div id="agents_save_agent" class="menu_button menu_button_icon">
+                                <i class="fa-solid fa-save"></i>
+                                <span data-i18n="Save">Save</span>
+                            </div>
+                            <div id="agents_cancel_edit" class="menu_button menu_button_icon">
+                                <i class="fa-solid fa-xmark"></i>
+                                <span data-i18n="Cancel">Cancel</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="agents_list" class="agents-list flex-container flexFlowColumn gap10px"></div>
+                </div>
+            </div>
+        </div>
         <div id="extensions-settings-button" class="drawer">
             <div class="drawer-toggle">
                 <div class="drawer-icon fa-solid fa-cubes fa-fw closedIcon" title="Extensions" data-i18n="[title]Extensions"></div>

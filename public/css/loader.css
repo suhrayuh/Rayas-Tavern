@@ -70,19 +70,24 @@
     position: static;
     top: unset;
     left: unset;
+    color: var(--raya-pink-soft, #FE99C9);
+    filter: drop-shadow(0 0 10px rgba(241, 77, 166, 0.45));
 }
 
 .splash-logo {
-    /* max original px, or 50% on mobile */
-    width: min(150px, 50%);
+    /* max original px, or 60% on mobile */
+    width: min(220px, 60%);
     height: auto;
-    filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3));
+    filter: drop-shadow(0 0 12px rgba(254, 153, 201, 0.35)) drop-shadow(0 4px 8px rgba(0, 0, 0, 0.45));
 }
 
 .splash-message {
     margin: 0;
-    font-size: 1.25rem;
+    color: var(--raya-lilac-soft, #E9D2F4);
+    font-family: var(--mainFontFamily);
+    font-size: 1.45rem;
     font-weight: 500;
-    opacity: 0.9;
-    letter-spacing: 0.02em;
+    opacity: 0.95;
+    letter-spacing: 0.05em;
+    text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.95), 0 0 8px rgba(212, 171, 212, 0.35);
 }

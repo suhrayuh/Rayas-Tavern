@@ -4,8 +4,31 @@ import fs from 'node:fs';
 import crypto from 'node:crypto';
 import isDocker from 'is-docker';
 import webpack from 'webpack';
+import { isBunRuntime } from './src/runtime.js';
 import { serverDirectory } from './src/server-directory.js';
 import { getVersion, color } from './src/util.js';
+
+const BUN_LIB_BUNDLE_SIGNATURE = 'bun-no-minify-v1';
+
+function hashFileIfPresent(hasher, filePath) {
+    if (!fs.existsSync(filePath)) {
+        hasher.update(`${filePath}:missing`);
+        return;
+    }
+
+    hasher.update(filePath);
+    hasher.update(fs.readFileSync(filePath));
+}
+
+function getPublicLibInputsSignature() {
+    const hasher = crypto.createHash('sha256');
+
+    hashFileIfPresent(hasher, path.join(serverDirectory, 'public', 'lib.js'));
+    hashFileIfPresent(hasher, path.join(serverDirectory, 'package.json'));
+    hashFileIfPresent(hasher, path.join(serverDirectory, 'bun.lock'));
+
+    return hasher.digest('hex');
+}
 
 /**
  * Generate a cache version string based on the application version, Git revision, and Webpack version.
@@ -13,7 +36,13 @@ import { getVersion, color } from './src/util.js';
  */
 function getWebpackCacheVersion() {
     return crypto.createHash('shake256', { outputLength: 8 })
-        .update(JSON.stringify([appVersion.pkgVersion, appVersion.gitRevision, webpack.version]))
+        .update(JSON.stringify([
+            appVersion.pkgVersion,
+            appVersion.gitRevision,
+            webpack.version,
+            isBunRuntime() ? BUN_LIB_BUNDLE_SIGNATURE : 'default',
+            getPublicLibInputsSignature(),
+        ]))
         .digest('hex');
 }
 
@@ -90,10 +119,14 @@ export default function getPublicLibConfig({ forceDist = false, pruneCache = fal
         pruneWebpackCache(webpackRoot, cacheVersion);
     }
 
+    // Bun's Webpack/Terser path can emit invalid syntax in the generated lib.js bundle.
+    // Keeping the vendor bundle unminified avoids the bad output while preserving Bun at runtime.
+    const minimize = !isBunRuntime();
+
     return {
         mode: 'production',
         entry: path.join(serverDirectory, 'public/lib.js'),
-        cache: {
+        cache: isBunRuntime() ? false : {
             type: 'filesystem',
             cacheDirectory: cacheDirectory,
             store: 'pack',
@@ -114,6 +147,9 @@ export default function getPublicLibConfig({ forceDist = false, pruneCache = fal
         },
         performance: {
             hints: false,
+        },
+        optimization: {
+            minimize,
         },
         output: {
             path: outputDirectory,

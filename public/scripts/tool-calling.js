@@ -1,6 +1,6 @@
 import { DOMPurify } from '../lib.js';
 
-import { addOneMessage, chat, event_types, eventSource, getGeneratingApi, getGeneratingModel, main_api, saveChatConditional, system_avatar, systemUserName } from '../script.js';
+import { event_types, eventSource, main_api } from '../script.js';
 import { chat_completion_sources, custom_prompt_post_processing_types, getChatCompletionModel, model_list, oai_settings } from './openai.js';
 import { Popup } from './popup.js';
 import { SlashCommand } from './slash-commands/SlashCommand.js';
@@ -12,6 +12,41 @@ import { SlashCommandParser } from './slash-commands/SlashCommandParser.js';
 import { slashCommandReturnHelper } from './slash-commands/SlashCommandReturnHelper.js';
 import { isTrueBoolean } from './utils.js';
 
+const HIDDEN_TOOL_STATE_KEY = '__stHiddenToolState';
+
+function getHiddenToolState() {
+    const toolWindow = /** @type {any} */ (window);
+    if (!toolWindow[HIDDEN_TOOL_STATE_KEY]) {
+        toolWindow[HIDDEN_TOOL_STATE_KEY] = {
+            pendingInvocations: [],
+        };
+    }
+
+    return toolWindow[HIDDEN_TOOL_STATE_KEY];
+}
+
+export function getPendingToolInvocations() {
+    const state = getHiddenToolState();
+    return Array.isArray(state.pendingInvocations) ? state.pendingInvocations : [];
+}
+
+export function hasPendingToolInvocations() {
+    return getPendingToolInvocations().length > 0;
+}
+
+export function clearPendingToolInvocations() {
+    const state = getHiddenToolState();
+    state.pendingInvocations = [];
+}
+
+/**
+ * @param {ToolInvocation[]} invocations
+ */
+function setPendingToolInvocations(invocations) {
+    const state = getHiddenToolState();
+    state.pendingInvocations = Array.isArray(invocations) ? structuredClone(invocations) : [];
+}
+
 /**
  * @typedef {object} ToolInvocation
  * @property {string} id - A unique identifier for the tool invocation.
@@ -21,12 +56,11 @@ import { isTrueBoolean } from './utils.js';
  * @property {string} result - The result of the tool invocation.
  * @property {string?} signature - The thought signature associated with the tool invocation.
  * @property {string?} reasoning - The plaintext reasoning associated with this tool call turn.
- * @property {boolean} [error] - Whether the tool invocation failed.
  */
 
 /**
  * @typedef {object} ToolInvocationResult
- * @property {ToolInvocation[]} invocations Tool invocations (both successful and failed)
+ * @property {ToolInvocation[]} invocations Successful tool invocations
  * @property {Error[]} errors Errors that occurred during tool invocation
  * @property {string[]} stealthCalls Names of stealth tools that were invoked
  */
@@ -337,10 +371,10 @@ export class ToolManager {
 
             if (error instanceof Error) {
                 error.cause = name;
-                return error;
+                return error.toString();
             }
 
-            return new Error('Unknown error occurred while invoking the tool.', { cause: name });
+            return new Error('Unknown error occurred while invoking the tool.', { cause: name }).toString();
         }
     }
 
@@ -637,8 +671,6 @@ export class ToolManager {
                     return currentModel.supported_features?.includes('tools');
                 case chat_completion_sources.ELECTRONHUB:
                     return currentModel.metadata?.function_call;
-                case chat_completion_sources.WORKERS_AI:
-                    return Array.isArray(currentModel.properties) && currentModel.properties.some(p => p.property_id === 'function_calling' && p.value === 'true');
             }
         }
 
@@ -666,8 +698,6 @@ export class ToolManager {
             chat_completion_sources.ZAI,
             chat_completion_sources.SILICONFLOW,
             chat_completion_sources.NANOGPT,
-            chat_completion_sources.WORKERS_AI,
-            chat_completion_sources.MINIMAX,
         ];
         return supportedSources.includes(settings.chat_completion_source);
     }
@@ -801,23 +831,9 @@ export class ToolManager {
             toastr.clear(toast);
             console.log('[ToolManager] Function tool result:', result);
 
-            // Handle tool errors — still create an invocation so the LLM sees the failure
+            // Save a successful invocation
             if (toolResult instanceof Error) {
                 result.errors.push(toolResult);
-                if (isStealth) {
-                    result.stealthCalls.push(name);
-                } else {
-                    result.invocations.push({
-                        id,
-                        displayName,
-                        name,
-                        parameters: stringify(parameters),
-                        result: toolResult.toString(),
-                        error: true,
-                        signature: toolCall.signature || null,
-                        reasoning: reasoningText || null,
-                    });
-                }
                 continue;
             }
 
@@ -833,7 +849,6 @@ export class ToolManager {
                 name,
                 parameters: stringify(parameters),
                 result: toolResult,
-                error: false,
                 signature: toolCall.signature || null,
                 reasoning: reasoningText || null,
             };
@@ -886,26 +901,18 @@ export class ToolManager {
      */
     static async saveFunctionToolInvocations(invocations) {
         if (!Array.isArray(invocations) || invocations.length === 0) {
+            clearPendingToolInvocations();
             return;
         }
-        const message = {
-            name: systemUserName,
-            force_avatar: system_avatar,
-            is_system: true,
-            is_user: false,
-            mes: ToolManager.#formatToolInvocationMessage(invocations),
-            extra: {
-                isSmallSys: true,
-                tool_invocations: invocations,
-                api: getGeneratingApi(),
-                model: getGeneratingModel(),
-            },
-        };
-        chat.push(message);
+
+        setPendingToolInvocations(invocations);
+
+        console.groupCollapsed(`[ToolManager] Hidden tool results (${invocations.length})`);
+        console.log('Formatted tool results message:', ToolManager.#formatToolInvocationMessage(invocations));
+        console.log('Invocations:', structuredClone(invocations));
+        console.groupEnd();
+
         await eventSource.emit(event_types.TOOL_CALLS_PERFORMED, invocations);
-        addOneMessage(message);
-        await eventSource.emit(event_types.TOOL_CALLS_RENDERED, invocations);
-        await saveChatConditional();
     }
 
     /**

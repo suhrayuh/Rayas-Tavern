@@ -36,6 +36,12 @@ export class ButtonUi {
             $(this.render()).fadeIn(animation_duration);
             dragElement($(this.render()));
         } else {
+            const drawerQrContainer = document.querySelector('#st-side-drawer-qr');
+            if (drawerQrContainer) {
+                drawerQrContainer.append(this.render());
+                return;
+            }
+
             const sendForm = document.querySelector('#send_form');
             if (sendForm.children.length > 0) {
                 sendForm.children[0].insertAdjacentElement('beforebegin', this.render());

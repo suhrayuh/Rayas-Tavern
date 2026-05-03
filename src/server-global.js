@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 globalThis.FORCE_GLOBAL_MODE = true;
 await import('../server.js');
 

@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { Buffer } from 'node:buffer';
+import { createRequire } from 'node:module';
 import zlib from 'node:zlib';
 import { promisify } from 'node:util';
 
@@ -16,6 +17,9 @@ import { convertClaudePrompt } from '../prompt-converters.js';
 import { TEXTGEN_TYPES } from '../constants.js';
 import { setAdditionalHeaders } from '../additional-headers.js';
 import { getConfigValue, isValidUrl } from '../util.js';
+
+const require = createRequire(import.meta.url);
+const { getTokenizer: getClaudeTokenizer } = require('@anthropic-ai/tokenizer');
 
 /**
  * @typedef { (req: import('express').Request, res: import('express').Response) => Promise<any> } TokenizationHandler
@@ -236,13 +240,23 @@ class WebTokenizer {
             return this.#instance;
         }
 
+        const isBunRuntime = typeof Bun !== 'undefined';
+        const instantiateFromPath = async (tokenizerPath) => {
+            const fileBuffer = await fs.promises.readFile(tokenizerPath);
+            return await Tokenizer.fromJSON(fileBuffer);
+        };
+
         try {
             const pathToModel = await getPathToTokenizer(this.#model, this.#fallbackModel);
-            const fileBuffer = await fs.promises.readFile(pathToModel);
-            this.#instance = await Tokenizer.fromJSON(fileBuffer);
+            this.#instance = await instantiateFromPath(pathToModel);
             console.info('Instantiated the tokenizer for', path.parse(pathToModel).name);
             return this.#instance;
         } catch (error) {
+            if (isBunRuntime) {
+                console.warn(`Web tokenizer is unavailable under Bun for ${this.#model}. Falling back to estimation.`, error);
+                return null;
+            }
+
             console.error('Web tokenizer failed to load: ' + this.#model, error);
             return null;
         }
@@ -256,7 +270,79 @@ const spp_mistral = new SentencePieceTokenizer('src/tokenizers/mistral.model');
 const spp_yi = new SentencePieceTokenizer('src/tokenizers/yi.model');
 const spp_gemma = new SentencePieceTokenizer('src/tokenizers/gemma.model');
 const spp_jamba = new SentencePieceTokenizer('src/tokenizers/jamba.model');
-const claude_tokenizer = new WebTokenizer('src/tokenizers/claude.json');
+/**
+ * Normalizes token ids into a Uint32Array so Bun-safe Tiktoken decode can consume them.
+ * @param {ArrayLike<number> | number[]} ids
+ * @returns {Uint32Array}
+ */
+function toUint32Array(ids) {
+    if (ids instanceof Uint32Array) {
+        return ids;
+    }
+
+    return Uint32Array.from(Array.from(ids || []), Number);
+}
+
+/**
+ * Claude-compatible tokenizer wrapper backed by @anthropic-ai/tokenizer.
+ */
+class ClaudeTokenizerInstance {
+    /**
+     * @param {ReturnType<typeof getClaudeTokenizer>} tokenizer
+     */
+    constructor(tokenizer) {
+        this.tokenizer = tokenizer;
+        this.decoder = new TextDecoder();
+    }
+
+    /**
+     * @param {string} text
+     * @returns {Uint32Array}
+     */
+    encode(text) {
+        return this.tokenizer.encode(String(text).normalize('NFKC'), 'all');
+    }
+
+    /**
+     * @param {ArrayLike<number> | number[]} ids
+     * @returns {string}
+     */
+    decode(ids) {
+        const textBytes = this.tokenizer.decode(toUint32Array(ids));
+        return this.decoder.decode(textBytes);
+    }
+}
+
+/**
+ * Bun-safe Claude tokenizer.
+ */
+class ClaudeTokenizer {
+    /**
+     * @type {ClaudeTokenizerInstance | null}
+     */
+    #instance;
+
+    /**
+     * Gets the Claude tokenizer instance.
+     * @returns {Promise<ClaudeTokenizerInstance | null>}
+     */
+    async get() {
+        if (this.#instance) {
+            return this.#instance;
+        }
+
+        try {
+            this.#instance = new ClaudeTokenizerInstance(getClaudeTokenizer());
+            console.info('Instantiated the tokenizer for claude');
+            return this.#instance;
+        } catch (error) {
+            console.error('Claude tokenizer failed to load', error);
+            return null;
+        }
+    }
+}
+
+const claude_tokenizer = new ClaudeTokenizer();
 const llama3_tokenizer = new WebTokenizer('src/tokenizers/llama3.json');
 const commandRTokenizer = new WebTokenizer('https://github.com/SillyTavern/SillyTavern-Tokenizers/raw/main/command-r.json.gz', 'src/tokenizers/llama3.json');
 const commandATokenizer = new WebTokenizer('https://github.com/SillyTavern/SillyTavern-Tokenizers/raw/main/command-a.json.gz', 'src/tokenizers/llama3.json');
@@ -332,7 +418,7 @@ export function getWebTokenizer(model) {
     }
 
     if (model.includes('claude')) {
-        return claude_tokenizer;
+        return null;
     }
 
     if (model.includes('command-r')) {
@@ -746,7 +832,19 @@ router.post('/yi/encode', createSentencepieceEncodingHandler(spp_yi));
 router.post('/gemma/encode', createSentencepieceEncodingHandler(spp_gemma));
 router.post('/jamba/encode', createSentencepieceEncodingHandler(spp_jamba));
 router.post('/gpt2/encode', createTiktokenEncodingHandler('gpt2'));
-router.post('/claude/encode', createWebTokenizerEncodingHandler(claude_tokenizer));
+router.post('/claude/encode', async function (req, res) {
+    try {
+        if (!req.body) return res.sendStatus(400);
+        const instance = await claude_tokenizer.get();
+        if (!instance) return res.send({ ids: [], count: 0, chunks: [] });
+        const text = String(req.body.text || '');
+        const ids = instance.encode(text);
+        return res.send({ ids: Array.from(ids), count: ids.length, chunks: [] });
+    } catch (error) {
+        console.error(error);
+        return res.send({ ids: [], count: 0, chunks: [] });
+    }
+});
 router.post('/llama3/encode', createWebTokenizerEncodingHandler(llama3_tokenizer));
 router.post('/qwen2/encode', createWebTokenizerEncodingHandler(qwen2Tokenizer));
 router.post('/command-r/encode', createWebTokenizerEncodingHandler(commandRTokenizer));
@@ -761,7 +859,19 @@ router.post('/yi/decode', createSentencepieceDecodingHandler(spp_yi));
 router.post('/gemma/decode', createSentencepieceDecodingHandler(spp_gemma));
 router.post('/jamba/decode', createSentencepieceDecodingHandler(spp_jamba));
 router.post('/gpt2/decode', createTiktokenDecodingHandler('gpt2'));
-router.post('/claude/decode', createWebTokenizerDecodingHandler(claude_tokenizer));
+router.post('/claude/decode', async function (req, res) {
+    try {
+        if (!req.body) return res.sendStatus(400);
+        const instance = await claude_tokenizer.get();
+        if (!instance) return res.send({ text: '' });
+        const ids = Array.isArray(req.body.ids) ? req.body.ids : [];
+        const text = instance.decode(ids);
+        return res.send({ text });
+    } catch (error) {
+        console.error(error);
+        return res.send({ text: '' });
+    }
+});
 router.post('/llama3/decode', createWebTokenizerDecodingHandler(llama3_tokenizer));
 router.post('/qwen2/decode', createWebTokenizerDecodingHandler(qwen2Tokenizer));
 router.post('/command-r/decode', createWebTokenizerDecodingHandler(commandRTokenizer));
@@ -794,8 +904,11 @@ router.post('/openai/encode', async function (req, res) {
         }
 
         if (queryModel.includes('claude')) {
-            const handler = createWebTokenizerEncodingHandler(claude_tokenizer);
-            return handler(req, res);
+            const instance = await claude_tokenizer.get();
+            if (!instance) return res.send({ ids: [], count: 0, chunks: [] });
+            const text = String(req.body.text || '');
+            const ids = instance.encode(text);
+            return res.send({ ids: Array.from(ids), count: ids.length, chunks: [] });
         }
 
         if (queryModel.includes('gemma') || queryModel.includes('gemini')) {
@@ -867,8 +980,11 @@ router.post('/openai/decode', async function (req, res) {
         }
 
         if (queryModel.includes('claude')) {
-            const handler = createWebTokenizerDecodingHandler(claude_tokenizer);
-            return handler(req, res);
+            const instance = await claude_tokenizer.get();
+            if (!instance) return res.send({ text: '' });
+            const ids = Array.isArray(req.body.ids) ? req.body.ids : [];
+            const text = instance.decode(ids);
+            return res.send({ text });
         }
 
         if (queryModel.includes('gemma') || queryModel.includes('gemini')) {
@@ -926,7 +1042,8 @@ router.post('/openai/count', async function (req, res) {
         if (model === 'claude') {
             const instance = await claude_tokenizer.get();
             if (!instance) throw new Error('Failed to load the Claude tokenizer');
-            num_tokens = countWebTokenizerTokens(instance, req.body);
+            const convertedPrompt = convertClaudePrompt(req.body, false, '', false, false, '', false);
+            num_tokens = instance.encode(convertedPrompt).length;
             return res.send({ 'token_count': num_tokens });
         }
 

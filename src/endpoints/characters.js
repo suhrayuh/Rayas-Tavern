@@ -10,6 +10,7 @@ import yaml from 'yaml';
 import _ from 'lodash';
 import mime from 'mime-types';
 import { Jimp, JimpMime } from '../jimp.js';
+import { safeCrop, safeCover } from '../jimp-safe.js';
 import storage from 'node-persist';
 
 import { AVATAR_WIDTH, AVATAR_HEIGHT, DEFAULT_AVATAR_PATH } from '../constants.js';
@@ -290,7 +291,7 @@ export async function applyAvatarCropResize(jimp, crop) {
 
     // Apply crop if defined
     if (typeof crop == 'object' && [crop.x, crop.y, crop.width, crop.height].every(x => typeof x === 'number')) {
-        image.crop({ x: crop.x, y: crop.y, w: crop.width, h: crop.height });
+        safeCrop(image, { x: crop.x, y: crop.y, w: crop.width, h: crop.height });
         // Apply standard resize if requested
         if (crop.want_resize) {
             finalWidth = AVATAR_WIDTH;
@@ -301,7 +302,7 @@ export async function applyAvatarCropResize(jimp, crop) {
         }
     }
 
-    image.cover({ w: finalWidth, h: finalHeight });
+    safeCover(image, { w: finalWidth, h: finalHeight });
     return await image.getBuffer(JimpMime.png);
 }
 

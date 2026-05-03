@@ -4,6 +4,7 @@ import path from 'node:path';
 import express from 'express';
 import sanitize from 'sanitize-filename';
 import { Jimp, JimpMime } from '../jimp.js';
+import { safeCover } from '../jimp-safe.js';
 import { sync as writeFileAtomicSync } from 'write-file-atomic';
 import { imageSize as sizeOf } from 'image-size';
 
@@ -225,7 +226,7 @@ async function processSingleImage(file, originalFolder, thumbnailFolder, type) {
         } else if (type === 'avatar' || type === 'persona') {
             // Crop and resize to fixed dimensions
             const [configWidth, configHeight] = dimensions[type];
-            thumbImage.cover({ w: configWidth, h: configHeight });
+            safeCover(thumbImage, { w: configWidth, h: configHeight });
         }
 
         const buffer = pngFormat

@@ -8,6 +8,7 @@
         "@adobe/css-tools": "^4.4.4",
         "@agnai/sentencepiece-js": "^1.1.1",
         "@agnai/web-tokenizers": "^0.1.3",
+        "@anthropic-ai/tokenizer": "^0.0.4",
         "@iconfu/svg-inject": "^1.2.3",
         "@jimp/core": "^1.6.0",
         "@jimp/js-bmp": "^1.6.0",
@@ -146,6 +147,8 @@
     "@agnai/sentencepiece-js": ["@agnai/sentencepiece-js@1.1.1", "", { "dependencies": { "app-root-path": "^3.1.0" } }, "sha512-h2+XPrJVLuVLl+2+3iZPWcTw6Fs2NNulnxyh7LoI1hzHHib1wDC6KTmTrDJlLq7/lr5QFYpeMz2rlTFQrS0C0g=="],
 
     "@agnai/web-tokenizers": ["@agnai/web-tokenizers@0.1.3", "", {}, "sha512-KlmTftToTtmb6aLVdne4NluS+POWputPF5J8v25UN/EQS+K9vahWEIe1NPRSFqBQclObkqHaj7JOnFrmnSm5MA=="],
+
+    "@anthropic-ai/tokenizer": ["@anthropic-ai/tokenizer@0.0.4", "", { "dependencies": { "@types/node": "^18.11.18", "tiktoken": "^1.0.10" } }, "sha512-EHRKbxlxlc8W4KCBEseByJ7YwyYCmgu9OyN59H9+IYIGPoKv8tXyQXinkeGDI+cI8Tiuz9wk2jZb/kK7AyvL7g=="],
 
     "@chevrotain/cst-dts-gen": ["@chevrotain/cst-dts-gen@11.2.0", "", { "dependencies": { "@chevrotain/gast": "11.2.0", "@chevrotain/types": "11.2.0", "lodash-es": "4.17.23" } }, "sha512-ssJFvn/UXhQQeICw3SR/fZPmYVj+JM2mP+Lx7bZ51cOeHaMWOKp3AUMuyM3QR82aFFXTfcAp67P5GpPjGmbZWQ=="],
 

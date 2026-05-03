@@ -3,6 +3,7 @@
         "@adobe/css-tools": "^4.4.4",
         "@agnai/sentencepiece-js": "^1.1.1",
         "@agnai/web-tokenizers": "^0.1.3",
+        "@anthropic-ai/tokenizer": "^0.0.4",
         "@iconfu/svg-inject": "^1.2.3",
         "@jimp/core": "^1.6.0",
         "@jimp/js-bmp": "^1.6.0",

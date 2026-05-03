@@ -1742,6 +1742,49 @@ export async function sendTextareaMessage() {
 }
 
 /**
+ * Prepares Info Board content with Raya-specific styling.
+ * @param {string} rawContent Raw content between [info_board] tags
+ * @returns {string} Formatted HTML string
+ */
+function prepareRayaInfoBoardContent(rawContent) {
+    let html = String(rawContent || '').trim();
+    html = html.replace(/(Time\s*\/\s*Date\s*:[\s\S]*?Location\s*\/\s*Position\s*:[\s\S]*?)(?=✿|$)/gi, '<div class="section-block">$1</div>');
+    html = html.replace(/(✿\s*[^✿]+?\s*✿[\s\S]*?)(?=✿|$)/gi, '<div class="section-block">$1</div>');
+    html = html.replace(/(Time\s*\/\s*Date\s*:)/gi, '<span class="pink-title">$1</span>');
+    html = html.replace(/(Location\s*\/\s*Position\s*:)/gi, '<span class="pink-title">$1</span>');
+    html = html.replace(/(Thought\s*:)/gi, '<span class="pink-title">$1</span>');
+    html = html.replace(/([^\s\w<]*\s*Affinity\s*:)/gi, '<span class="affinity-glow">$1</span>');
+    html = html.replace(/([^\s\w<]*\s*Arousal\s*:)/gi, '<span class="arousal-glow">$1</span>');
+    html = html.replace(/(Goal\s*:)/gi, '<span class="pink-title">$1</span>');
+    html = html.replace(/(<span class="pink-title">Thought\s*:<\/span>)([\s\S]*?)(?=<span class="pink-title">Goal|$)/gi, '$1<span class="thought-text">$2</span>');
+    html = html.replace(/(✿\s*[^✿]+?\s*✿)/g, '<span class="name-glow">$1</span>');
+    html = html.replace(/(▰+)/g, '<span style="color:#F14DA6;">$1</span>');
+    html = html.replace(/(▱+)/g, '<span style="color:#D4ABD4;">$1</span>');
+    html = html.replace(/(\d+%)/g, '<span style="color:#D4ABD4;font-weight:bold;">$1</span>');
+    html = html.replace(/(\p{L}|\p{N})(<(?:em|i)(?:\s[^>]*)?>[\s\S]*?<\/(?:em|i)>)(\p{L}|\p{N})/gu, '$1 $2 $3');
+    return html;
+}
+
+ * Formats [thought] and [info_board] native tags into styled HTML.
+ * @param {string} html HTML string to process
+ * @returns {string} Formatted HTML string
+ */
+function formatRayaNativeElements(html) {
+    html = html.replace(/\[thought\]([\s\S]*?)\[\/thought\]/gi, (_, content) => {
+        return `<div class="thought-bubble-container"><div class="thought-bubble-main">${content}</div><div class="thought-bubble-tail-1"></div><div class="thought-bubble-tail-2"></div><div class="thought-bubble-tail-3"></div></div>`;
+    });
+
+    html = html.replace(/\[Info_Board\]([\s\S]*?)\[\/Info_Board\]/gi, (_, content) => {
+        return `<div class="info-board-wrapper"><div class="info-board-header" onclick="this.parentElement.classList.toggle('expanded');this.nextElementSibling.classList.toggle('expanded');this.querySelector('.info-board-arrow').textContent=this.parentElement.classList.contains('expanded')?'▼':'▶';"><span class="info-board-icon">✧˖°</span><span class="info-board-title">Infoboard</span><span class="info-board-arrow">▶</span></div><div class="info-board-content">${prepareRayaInfoBoardContent(content)}</div></div>`;
+    });
+
+    html = html.replace(/<li(\s[^>]*)?>/gi, (match, attrs = '') => `<li${attrs} data-gleam="1"><span class="gleam-star">☆┇</span> `);
+    html = html.replace(/(?<![">])☆┇/gu, '<span class="gleam-star">☆┇</span>');
+
+    return html;
+}
+
+/**
  * Formats the message text into an HTML string using Markdown and other formatting.
  * @param {string} mes Message text
  * @param {string} ch_name Character name
@@ -1909,6 +1952,10 @@ export function messageFormatting(mes, ch_name, isSystem, isUser, messageId, san
     mes = encodeStyleTags(mes);
     mes = DOMPurify.sanitize(mes, config);
     mes = decodeStyleTags(mes, { prefix: '.mes_text ' });
+
+    if (!isReasoning) {
+        mes = formatRayaNativeElements(mes);
+    }
 
     return mes;
 }

@@ -1765,6 +1765,7 @@ function prepareRayaInfoBoardContent(rawContent) {
     return html;
 }
 
+/**
  * Formats [thought] and [info_board] native tags into styled HTML.
  * @param {string} html HTML string to process
  * @returns {string} Formatted HTML string

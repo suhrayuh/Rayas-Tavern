@@ -6617,6 +6617,115 @@ async function processImageAttachment(message, { imageUrls }) {
  * @param {SaveReplyParams} params
  * @returns {Promise<SaveReplyResult>} Promise when the message is saved
  *
+ * Returns a default empty World Info trace object.
+ * @returns {object} Default trace object
+ */
+function getDefaultWorldInfoTrace() {
+    return {
+        mode: null,
+        fallback: 'none',
+        error: null,
+        hadActivation: false,
+        constantsInjectedCount: 0,
+        aiEligiblePoolCount: 0,
+        aiSelectedEntries: [],
+        keywordFallbackEntries: [],
+        constants: [],
+    };
+}
+
+/**
+ * Attaches the latest World Info AI trace to a message.
+ * @param {object} message Chat message object
+ */
+function attachWorldInfoTraceToMessage(message) {
+    if (!message?.extra || message.is_user || message.is_system) {
+        return;
+    }
+
+    const currentTrace = window['__aiWorldInfoLatestTrace'];
+    message.extra.ai_wi_trace = currentTrace ? structuredClone(currentTrace) : getDefaultWorldInfoTrace();
+    refreshWorldInfoTracePanelFromChat();
+}
+
+/**
+ * Renders the World Info AI trace panel.
+ * @param {object|null} trace Trace data
+ * @param {object} [options] Options
+ * @param {number|null} [options.messageId] Message ID to display
+ */
+function renderWorldInfoTracePanel(trace, { messageId = null } = {}) {
+    const panel = $('#world_info_ai_trace_panel');
+    if (!panel.length) {
+        return;
+    }
+
+    const safeTrace = trace ?? getDefaultWorldInfoTrace();
+    panel.empty();
+
+    if (messageId !== null) {
+        panel.append(`<div class="text_muted">Message #${messageId}</div>`);
+    }
+
+    if (!safeTrace.hadActivation) {
+        panel.append('<div class="text_muted">No entries were triggered in this turn.</div>');
+        return;
+    }
+
+    panel.append(`<div><strong>Mode:</strong> ${String(safeTrace.mode ?? 'unknown')}</div>`);
+
+    if (safeTrace.error) {
+        panel.append(`<div class="text_muted"><strong>Fallback:</strong> ${String(safeTrace.fallback)}</div>`);
+        panel.append(`<div class="text_muted"><strong>Error:</strong> ${String(safeTrace.error)}</div>`);
+    }
+
+    if (Array.isArray(safeTrace.constants) && safeTrace.constants.length) {
+        const constantsList = $('<div class="flex-container flexFlowColumn gap4px"></div>');
+        constantsList.append('<div><strong>Always injected constants</strong></div>');
+        safeTrace.constants.forEach(entry => {
+            constantsList.append(`<div class="text_muted">• ${String(entry.title || `${entry.world}.${entry.uid}`)}</div>`);
+        });
+        panel.append(constantsList);
+    }
+
+    if (Array.isArray(safeTrace.aiSelectedEntries) && safeTrace.aiSelectedEntries.length) {
+        const selectedList = $('<div class="flex-container flexFlowColumn gap4px"></div>');
+        selectedList.append('<div><strong>AI-selected entries</strong></div>');
+        safeTrace.aiSelectedEntries.forEach(entry => {
+            selectedList.append(`<div class="text_muted">• ${String(entry.title || `${entry.world}.${entry.uid}`)}${entry.confidence ? ` (${entry.confidence})` : ''}${entry.reason ? ` — ${entry.reason}` : ''}</div>`);
+        });
+        panel.append(selectedList);
+    }
+
+    if (Array.isArray(safeTrace.keywordFallbackEntries) && safeTrace.keywordFallbackEntries.length) {
+        const fallbackList = $('<div class="flex-container flexFlowColumn gap4px"></div>');
+        fallbackList.append('<div><strong>Keyword fallback entries</strong></div>');
+        safeTrace.keywordFallbackEntries.forEach(entry => {
+            fallbackList.append(`<div class="text_muted">• ${String(entry.title || `${entry.world}.${entry.uid}`)}</div>`);
+        });
+        panel.append(fallbackList);
+    }
+}
+
+/**
+ * Refreshes the World Info AI trace panel from the latest assistant message in chat.
+ */
+function refreshWorldInfoTracePanelFromChat() {
+    const latestAssistantMessageId = [...chat.keys()].reverse().find(index => {
+        const message = chat[index];
+        return message && !message.is_user && !message.is_system;
+    });
+
+    if (latestAssistantMessageId === undefined) {
+        renderWorldInfoTracePanel(null);
+        return;
+    }
+
+    const latestMessage = chat[latestAssistantMessageId];
+    renderWorldInfoTracePanel(latestMessage?.extra?.ai_wi_trace ?? null, { messageId: latestAssistantMessageId });
+}
+
+/**
  * @typedef {object} SaveReplyParams
  * @property {string} type Type of generation
  * @property {string} getMessage Generated message
@@ -6822,6 +6931,7 @@ export async function saveReply({ type, getMessage, fromStreaming = false, title
     }
 
     statMesProcess(item, type, characters, this_chid, oldMessage);
+    attachWorldInfoTraceToMessage(item);
     return { type, getMessage };
 }
 

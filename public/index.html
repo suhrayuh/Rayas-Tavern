@@ -4817,6 +4817,62 @@
                                             </label>
                                         </div>
                                     </div>
+                                    <div id="wiAISettings" class="flex-container flexFlowColumn gap10px m-t-1">
+                                        <div class="standoutHeader wide100p textAlignCenter" data-i18n="AI World Info Settings">AI World Info Settings</div>
+                                        <div class="flex-container gap10px alignitemsstretch flexWrap">
+                                            <label class="flex-container flexFlowColumn gap4px flex1 minWidth250px">
+                                                <small data-i18n="AI Activation Mode">AI Activation Mode</small>
+                                                <select id="world_info_activation_mode" class="text_pole">
+                                                    <option value="0" data-i18n="Keyword Only">Keyword Only</option>
+                                                    <option value="1" data-i18n="Two-Stage">Two-Stage</option>
+                                                    <option value="2" data-i18n="AI Only">AI Only</option>
+                                                </select>
+                                            </label>
+                                            <label class="flex-container flexFlowColumn gap4px flex1 minWidth250px">
+                                                <small data-i18n="AI Confidence Threshold">AI Confidence Threshold</small>
+                                                <select id="world_info_ai_confidence_threshold" class="text_pole">
+                                                    <option value="all" data-i18n="All">All</option>
+                                                    <option value="medium_high" data-i18n="Medium + High">Medium + High</option>
+                                                    <option value="high_only" data-i18n="High Only">High Only</option>
+                                                </select>
+                                            </label>
+                                        </div>
+                                        <div class="flex-container gap10px alignitemsstretch flexWrap">
+                                            <div class="alignitemscenter flex-container flexFlowColumn flexGrow flexShrink gap0 flexBasis48p minWidth250px">
+                                                <small data-i18n="AI Max Entries">
+                                                    AI Max Entries
+                                                </small>
+                                                <input class="neo-range-slider" type="range" id="world_info_ai_max_entries" name="world_info_ai_max_entries" min="1" max="20" step="1">
+                                                <input class="neo-range-input" type="number" min="1" max="20" step="1" data-for="world_info_ai_max_entries" id="world_info_ai_max_entries_counter">
+                                            </div>
+                                            <div class="alignitemscenter flex-container flexFlowColumn flexGrow flexShrink gap0 flexBasis48p minWidth250px">
+                                                <small data-i18n="AI Max Output Tokens">
+                                                    AI Max Output Tokens
+                                                </small>
+                                                <input class="neo-range-slider" type="range" id="world_info_ai_max_output_tokens" name="world_info_ai_max_output_tokens" min="32" max="2048" step="1">
+                                                <input class="neo-range-input" type="number" min="32" max="2048" step="1" data-for="world_info_ai_max_output_tokens" id="world_info_ai_max_output_tokens_counter">
+                                            </div>
+                                        </div>
+                                        <div class="flex-container gap10px alignitemsstretch flexWrap">
+                                            <label class="flex-container flexFlowColumn gap4px flex1 minWidth250px">
+                                                <small data-i18n="AI Search Connection Profile">AI Search Connection Profile</small>
+                                                <select id="world_info_ai_connection_profile_id" class="text_pole"></select>
+                                            </label>
+                                            <div class="flex-container flexFlowColumn gap4px flex1 minWidth250px">
+                                                <small data-i18n="AI Summary Connection Profile">AI Summary Connection Profile</small>
+                                                <select id="world_info_ai_summary_connection_profile_id" class="text_pole"></select>
+                                                <div id="world_info_ai_summary_manual_settings" class="flex-container flexFlowColumn gap4px displayNone m-t-1">
+                                                    <input id="world_info_ai_summary_manual_endpoint" class="text_pole" type="text" placeholder="Manual summary endpoint URL" data-i18n="[placeholder]Manual summary endpoint URL">
+                                                    <input id="world_info_ai_summary_manual_model" class="text_pole" type="text" placeholder="Manual summary model ID" data-i18n="[placeholder]Manual summary model ID">
+                                                    <input id="world_info_ai_summary_manual_api_key" class="text_pole" type="password" placeholder="Manual summary API key" data-i18n="[placeholder]Manual summary API key">
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <label class="flex-container flexFlowColumn gap4px">
+                                            <small data-i18n="AI Search Prompt">AI Search Prompt</small>
+                                            <textarea id="world_info_ai_search_prompt" class="text_pole" rows="6" placeholder="Prompt used to select relevant lorebook entries" data-i18n="[placeholder]Prompt used to select relevant lorebook entries"></textarea>
+                                        </label>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -7089,6 +7145,18 @@
                                 </small>
                             </label>
                             <textarea class="text_pole mdHotkeys" name="content" rows="8" data-i18n="[placeholder]What this keyword should mean to the AI, sent verbatim" placeholder="What this keyword should mean to the AI, sent verbatim"></textarea>
+                        </div>
+                    </div>
+                    <div name="aiSummaryBlock" class="world_entry_thin_controls flex2">
+                        <div class="world_entry_form_control flex1">
+                            <div class="flex-container alignitemscenter justifySpaceBetween gap10px marginBot5">
+                                <small class="textAlignCenter" data-i18n="AI Summary">AI Summary</small>
+                                <div class="menu_button menu_button_icon world_entry_generate_ai_summary" title="Generate AI summary for this entry" data-i18n="[title]Generate AI summary for this entry">
+                                    <i class="fa-solid fa-wand-magic-sparkles"></i>
+                                    <span data-i18n="Generate Summary">Generate Summary</span>
+                                </div>
+                            </div>
+                            <textarea class="text_pole margin0" name="aiSummary" rows="8" placeholder="Optional summary used for AI lore retrieval" data-i18n="[placeholder]Optional summary used for AI lore retrieval"></textarea>
                         </div>
                     </div>
                     <div class="world_entry_thin_controls commentContainer">

@@ -636,6 +636,30 @@ export function getSessionCookieAge() {
 }
 
 /**
+ * Get the session cookie expiration date for the current request.
+ * Uses Date setters rather than millisecond arithmetic so Bun doesn't overflow large values.
+ * @returns {Date|undefined} The cookie expiration date, or undefined for a session cookie
+ */
+export function getSessionCookieExpires() {
+    const configValue = getConfigValue('sessionTimeout', -1, 'number');
+
+    if (configValue === 0) {
+        return undefined;
+    }
+
+    const expires = new Date();
+
+    if (configValue > 0) {
+        expires.setUTCSeconds(expires.getUTCSeconds() + configValue);
+    } else {
+        // "No expiration" = 400 days per RFC 6265
+        expires.setUTCDate(expires.getUTCDate() + 400);
+    }
+
+    return expires;
+}
+
+/**
  * Hashes a password using scrypt with the provided salt.
  * @param {string} password Password to hash
  * @param {string} salt Salt to use for hashing

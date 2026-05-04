@@ -5,6 +5,9 @@ import getPublicLibConfig from '../../webpack.config.js';
 import { isBunRuntime } from '../runtime.js';
 
 export default function getWebpackServeMiddleware({ forceDist = false } = {}) {
+    const resolvePublicLibConfig = ({ forceDist: overrideForceDist = forceDist, pruneCache = false } = {}) =>
+        getPublicLibConfig({ forceDist: overrideForceDist, pruneCache });
+
     /**
      * A very spartan recreation of webpack-dev-middleware.
      * @param {import('express').Request} req Request object.
@@ -13,7 +16,7 @@ export default function getWebpackServeMiddleware({ forceDist = false } = {}) {
      * @type {import('express').RequestHandler}
      */
     function devMiddleware(req, res, next) {
-        const publicLibConfig = getPublicLibConfig({ forceDist });
+        const publicLibConfig = resolvePublicLibConfig();
         const outputPath = publicLibConfig.output?.path;
         const outputFile = publicLibConfig.output?.filename;
         const parsedPath = path.parse(req.path);
@@ -33,7 +36,7 @@ export default function getWebpackServeMiddleware({ forceDist = false } = {}) {
      * @returns {Promise<void>}
      */
     devMiddleware.runWebpackCompiler = ({ forceDist: overrideForceDist = forceDist, pruneCache = false } = {}) => {
-        const publicLibConfig = getPublicLibConfig({ forceDist: overrideForceDist, pruneCache });
+        const publicLibConfig = resolvePublicLibConfig({ forceDist: overrideForceDist, pruneCache });
         const outputPath = publicLibConfig.output?.path;
         const outputFile = publicLibConfig.output?.filename;
         const compiledOutputPath = typeof outputPath === 'string' && typeof outputFile === 'string'

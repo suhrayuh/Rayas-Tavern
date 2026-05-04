@@ -1761,7 +1761,8 @@ function prepareRayaInfoBoardContent(rawContent) {
     html = html.replace(/(▰+)/g, '<span style="color:#F14DA6;">$1</span>');
     html = html.replace(/(▱+)/g, '<span style="color:#D4ABD4;">$1</span>');
     html = html.replace(/(\d+%)/g, '<span style="color:#D4ABD4;font-weight:bold;">$1</span>');
-    html = html.replace(/(\p{L}|\p{N})(<(?:em|i)(?:\s[^>]*)?>[\s\S]*?<\/(?:em|i)>)(\p{L}|\p{N})/gu, '$1 $2 $3');
+    html = html.replace(/([^\s<])(<(?:em|i)(?:\s[^>]*)?>[\s\S]*?<\/(?:em|i)>)/giu, '$1 $2');
+    html = html.replace(/(<\/(?:em|i)>)([^\s>])/giu, '$1 $2');
     return html;
 }
 

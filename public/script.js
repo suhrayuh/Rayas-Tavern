@@ -3770,6 +3770,33 @@ class StreamingProcessor {
 
         syncMesToSwipe(messageId);
         saveLogprobsForActiveMessage(this.messageLogprobs.filter(Boolean), this.continueMessage);
+		
+		// Strip tracker/sim code blocks from newly generated messages
+        // This ensures SimTracker's secondary LLM always generates the tracker
+        // and prevents the main LLM from generating trackers that would skip secondary generation
+        if (message && message.mes) {
+            // Match code blocks with sim, tracker, simtracker, disp, or similar identifiers
+            // Also matches blocks wrapped in <div style="display: none;"> tags
+            // This regex matches:
+            //   - ```sim, ```tracker, ```simtracker, ```disp, etc.
+            //   - <div style="display: none;">\n```sim...```\n</div>
+            const trackerBlockRegex = /<div style="display: none;">\s*\n?\s*```(?:sim|tracker|simtracker|disp)[\s\S]*?```\s*\n?\s*<\/div>|```(?:sim|tracker|simtracker|disp)[\s\S]*?```/gi;
+            const originalMes = message.mes;
+            const cleanedMes = originalMes.replace(trackerBlockRegex, '').trim();
+            
+            // Only update if we actually removed something
+            if (cleanedMes !== originalMes) {
+                message.mes = cleanedMes;
+                
+                // Also update the swipe if this is a new message (not a swipe)
+                if (this.type !== 'swipe' && Array.isArray(message.swipes) && message.swipes.length > 0) {
+                    const lastSwipeIndex = message.swipes.length - 1;
+                    message.swipes[lastSwipeIndex] = cleanedMes;
+                }
+                
+                console.log(`[TrackerStrip] Removed tracker blocks from message ${messageId}`);
+            }
+        }
 
         if (Array.isArray(this.images) && this.images.length > 0) {
             await processImageAttachment(message, { imageUrls: this.images });
@@ -5391,6 +5418,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
                 isImpersonate: isImpersonate,
                 isContinue: isContinue,
                 displayIncompleteSentences: false,
+				stripGeneratedTrackerBlocks: true,
             });
 
             if (isContinue) {
@@ -5489,6 +5517,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
             isImpersonate: isImpersonate,
             isContinue: isContinue,
             displayIncompleteSentences: false,
+			stripGeneratedTrackerBlocks: true,
         });
 
 
@@ -6412,6 +6441,7 @@ function extractMultiSwipes(data, type) {
         isImpersonate: false,
         isContinue: false,
         displayIncompleteSentences: false,
+		stripGeneratedTrackerBlocks: true,
     }));
 
     return cleanedSwipes;
@@ -6431,10 +6461,10 @@ function extractMultiSwipes(data, type) {
  *
  * @returns {string} The formatted message
  */
-export function cleanUpMessage({ getMessage, isImpersonate, isContinue, displayIncompleteSentences = false, stoppingStrings = null, includeUserPromptBias = true, trimNames = true, trimWrongNames = true } = {}) {
+export function cleanUpMessage({ getMessage, isImpersonate, isContinue, displayIncompleteSentences = false, stoppingStrings = null, includeUserPromptBias = true, trimNames = true, trimWrongNames = true, stripGeneratedTrackerBlocks = false } = {}) {
     if (arguments.length > 0 && typeof arguments[0] !== 'object') {
         console.trace('cleanUpMessage called with positional arguments. Please use an object instead.');
-        [getMessage, isImpersonate, isContinue, displayIncompleteSentences, stoppingStrings, includeUserPromptBias, trimNames, trimWrongNames] = arguments;
+        [getMessage, isImpersonate, isContinue, displayIncompleteSentences, stoppingStrings, includeUserPromptBias, trimNames, trimWrongNames, stripGeneratedTrackerBlocks] = arguments;
     }
 
     if (!getMessage) {
@@ -6472,6 +6502,14 @@ export function cleanUpMessage({ getMessage, isImpersonate, isContinue, displayI
     // Regex uses vars, so add before formatting
     getMessage = getRegexedString(getMessage, isImpersonate ? regex_placement.USER_INPUT : regex_placement.AI_OUTPUT);
 
+    if (stripGeneratedTrackerBlocks && !isImpersonate && !isContinue) {
+        getMessage = getMessage
+            .replace(/<div\s+style=["']display\s*:\s*none;?["']>\s*```(?:sim|tracker|simtracker|disp)[\s\S]*?```\s*<\/div>/gi, '')
+            .replace(/```(?:sim|tracker|simtracker|disp)[\s\S]*?```/gi, '')
+            .replace(/\n{3,}/g, '\n\n')
+            .trim();
+    }
+	
     if (power_user.collapse_newlines) {
         getMessage = collapseNewlines(getMessage);
     }
@@ -6783,6 +6821,7 @@ export async function saveReply({ type, getMessage, fromStreaming = false, title
             lastMessage.extra.reasoning = reasoning;
             lastMessage.extra.reasoning_duration = null;
             lastMessage.extra.reasoning_signature = reasoningSignature;
+			attachWorldInfoTraceToMessage(lastMessage);
             await processImageAttachment(lastMessage, { imageUrls });
             if (power_user.message_token_count_enabled) {
                 const tokenCountText = (reasoning || '') + lastMessage.mes;
@@ -6809,6 +6848,7 @@ export async function saveReply({ type, getMessage, fromStreaming = false, title
         lastMessage.extra.reasoning = reasoning;
         lastMessage.extra.reasoning_duration = null;
         lastMessage.extra.reasoning_signature = reasoningSignature;
+		attachWorldInfoTraceToMessage(lastMessage);
         await processImageAttachment(lastMessage, { imageUrls });
         if (power_user.message_token_count_enabled) {
             const tokenCountText = (reasoning || '') + lastMessage.mes;
@@ -6831,6 +6871,7 @@ export async function saveReply({ type, getMessage, fromStreaming = false, title
         lastMessage.extra.model = getGeneratingModel();
         lastMessage.extra.reasoning += reasoning;
         lastMessage.extra.reasoning_signature = reasoningSignature;
+		attachWorldInfoTraceToMessage(lastMessage);
         await processImageAttachment(lastMessage, { imageUrls });
         // We don't know if the reasoning duration extended, so we don't update it here on purpose.
         if (power_user.message_token_count_enabled) {
@@ -12251,6 +12292,10 @@ jQuery(async function () {
     $(document).on('click', '.drawer-opener', doDrawerOpenClick);
 
     $('.drawer-toggle').on('click', doNavbarIconClick);
+	refreshWorldInfoTracePanelFromChat();
+	
+	eventSource.on(event_types.MESSAGE_RECEIVED, refreshWorldInfoTracePanelFromChat);
+	eventSource.on(event_types.CHAT_CHANGED, refreshWorldInfoTracePanelFromChat);
 
     $('html').on('touchstart mousedown', async function (e) {
         const clickTarget = $(e.target);

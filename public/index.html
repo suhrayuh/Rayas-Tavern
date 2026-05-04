@@ -4900,6 +4900,7 @@
                             <div id="OpenAllWIEntries" class="menu_button fa-solid fa-expand" title="Open all Entries" data-i18n="[title]Open all Entries"></div>
                             <div id="CloseAllWIEntries" class="menu_button fa-solid fa-compress" title="Close all Entries" data-i18n="[title]Close all Entries"></div>
                             <div id="world_backfill_memos" class="menu_button fa-solid fa-notes-medical" title="Fill empty Memo/Titles with Keywords" data-i18n="[title]Fill empty Memo/Titles with Keywords"></div>
+							<div id="world_ai_generate_summaries" class="menu_button fa-solid fa-wand-magic-sparkles" title="Generate AI summaries for all entries" data-i18n="[title]Generate AI summaries for all entries"></div>
                             <div id="world_apply_current_sorting" class="menu_button fa-solid fa-solid fa-arrow-down-9-1" title="Apply current sorting as Order" data-i18n="[title]Apply current sorting as Order"></div>
                             <input type="search" class="text_pole textarea_compact" data-i18n="[placeholder]Search..." id="world_info_search" placeholder="Search...">
                             <select id="world_info_sort_order" class="text_pole textarea_compact">
@@ -7147,18 +7148,6 @@
                             <textarea class="text_pole mdHotkeys" name="content" rows="8" data-i18n="[placeholder]What this keyword should mean to the AI, sent verbatim" placeholder="What this keyword should mean to the AI, sent verbatim"></textarea>
                         </div>
                     </div>
-                    <div name="aiSummaryBlock" class="world_entry_thin_controls flex2">
-                        <div class="world_entry_form_control flex1">
-                            <div class="flex-container alignitemscenter justifySpaceBetween gap10px marginBot5">
-                                <small class="textAlignCenter" data-i18n="AI Summary">AI Summary</small>
-                                <div class="menu_button menu_button_icon world_entry_generate_ai_summary" title="Generate AI summary for this entry" data-i18n="[title]Generate AI summary for this entry">
-                                    <i class="fa-solid fa-wand-magic-sparkles"></i>
-                                    <span data-i18n="Generate Summary">Generate Summary</span>
-                                </div>
-                            </div>
-                            <textarea class="text_pole margin0" name="aiSummary" rows="8" placeholder="Optional summary used for AI lore retrieval" data-i18n="[placeholder]Optional summary used for AI lore retrieval"></textarea>
-                        </div>
-                    </div>
                     <div class="world_entry_thin_controls commentContainer">
                     </div>
                 </div>
@@ -7233,6 +7222,18 @@
                         <div class="range-block-range">
                             <input class="text_pole margin0" name="delay" type="number" data-i18n="[placeholder]No delay" placeholder="No delay" min="0" max="999999">
                         </div>
+                    </div>
+                </div>
+                <div name="aiSummaryBlock" class="world_entry_thin_controls flex2">
+                    <div class="world_entry_form_control flex1">
+                        <div class="flex-container alignitemscenter justifySpaceBetween gap10px marginBot5">
+                            <small class="textAlignCenter" data-i18n="AI Summary">AI Summary</small>
+                            <div class="menu_button menu_button_icon world_entry_generate_ai_summary" title="Generate AI summary for this entry" data-i18n="[title]Generate AI summary for this entry">
+                                <i class="fa-solid fa-wand-magic-sparkles"></i>
+                                <span data-i18n="Generate Summary">Generate Summary</span>
+                            </div>
+                        </div>
+                        <textarea class="text_pole margin0" name="aiSummary" rows="8" placeholder="Optional summary used for AI lore retrieval" data-i18n="[placeholder]Optional summary used for AI lore retrieval"></textarea>
                     </div>
                 </div>
                 <div class="flex-container wide100p flexGap10">

@@ -1746,6 +1746,13 @@ export async function sendTextareaMessage() {
  * @param {string} rawContent Raw content between [info_board] tags
  * @returns {string} Formatted HTML string
  */
+function normalizeItalicSpacing(html) {
+    html = String(html || '');
+    html = html.replace(/([^\s>])(<(?:em|i)(?:\s[^>]*)?>)/giu, '$1 $2');
+    html = html.replace(/(<\/(?:em|i)>)([^\s<])/giu, '$1 $2');
+    return html;
+}
+
 function prepareRayaInfoBoardContent(rawContent) {
     let html = String(rawContent || '').trim();
     html = html.replace(/(Time\s*\/\s*Date\s*:[\s\S]*?Location\s*\/\s*Position\s*:[\s\S]*?)(?=✿|$)/gi, '<div class="section-block">$1</div>');
@@ -1761,8 +1768,7 @@ function prepareRayaInfoBoardContent(rawContent) {
     html = html.replace(/(▰+)/g, '<span style="color:#F14DA6;">$1</span>');
     html = html.replace(/(▱+)/g, '<span style="color:#D4ABD4;">$1</span>');
     html = html.replace(/(\d+%)/g, '<span style="color:#D4ABD4;font-weight:bold;">$1</span>');
-    html = html.replace(/([^\s<])(<(?:em|i)(?:\s[^>]*)?>[\s\S]*?<\/(?:em|i)>)/giu, '$1 $2');
-    html = html.replace(/(<\/(?:em|i)>)([^\s>])/giu, '$1 $2');
+    html = normalizeItalicSpacing(html);
     return html;
 }
 
@@ -1955,8 +1961,11 @@ export function messageFormatting(mes, ch_name, isSystem, isUser, messageId, san
     mes = DOMPurify.sanitize(mes, config);
     mes = decodeStyleTags(mes, { prefix: '.mes_text ' });
 
+    mes = normalizeItalicSpacing(mes);
+
     if (!isReasoning) {
         mes = formatRayaNativeElements(mes);
+        mes = normalizeItalicSpacing(mes);
     }
 
     return mes;

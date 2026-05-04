@@ -38,6 +38,7 @@ import {
     shouldRedirectToLogin,
     cleanUploads,
     getSessionCookieAge,
+    getSessionCookieExpires,
     verifySecuritySettings,
     loginPageMiddleware,
     migratePublicOverrides,
@@ -166,7 +167,7 @@ if (isBunRuntime()) {
     app.use((req, _res, next) => {
         // Bun 1.3.x overflows large millisecond cookie ages via Date.now(),
         // so we provide a concrete expiry date on each request instead.
-        req.sessionOptions.expires = getSessionCookieAge() ? new Date(Date.now() + getSessionCookieAge()) : undefined;
+        req.sessionOptions.expires = getSessionCookieExpires();
         delete req.sessionOptions.maxAge;
         next();
     });

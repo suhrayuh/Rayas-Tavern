@@ -418,7 +418,7 @@ export function getWebTokenizer(model) {
     }
 
     if (model.includes('claude')) {
-        return null;
+        return claude_tokenizer;
     }
 
     if (model.includes('command-r')) {
@@ -1081,35 +1081,50 @@ router.post('/openai/count', async function (req, res) {
 
         if (model === 'qwen2') {
             const instance = await qwen2Tokenizer.get();
-            if (!instance) throw new Error('Failed to load the Qwen2 tokenizer');
+            if (!instance) {
+                num_tokens = guesstimate(JSON.stringify(req.body));
+                return res.send({ 'token_count': num_tokens });
+            }
             num_tokens = countWebTokenizerTokens(instance, req.body);
             return res.send({ 'token_count': num_tokens });
         }
 
         if (model === 'command-r') {
             const instance = await commandRTokenizer.get();
-            if (!instance) throw new Error('Failed to load the Command-R tokenizer');
+            if (!instance) {
+                num_tokens = guesstimate(JSON.stringify(req.body));
+                return res.send({ 'token_count': num_tokens });
+            }
             num_tokens = countWebTokenizerTokens(instance, req.body);
             return res.send({ 'token_count': num_tokens });
         }
 
         if (model === 'command-a') {
             const instance = await commandATokenizer.get();
-            if (!instance) throw new Error('Failed to load the Command-A tokenizer');
+            if (!instance) {
+                num_tokens = guesstimate(JSON.stringify(req.body));
+                return res.send({ 'token_count': num_tokens });
+            }
             num_tokens = countWebTokenizerTokens(instance, req.body);
             return res.send({ 'token_count': num_tokens });
         }
 
         if (model === 'nemo') {
             const instance = await nemoTokenizer.get();
-            if (!instance) throw new Error('Failed to load the Nemo tokenizer');
+            if (!instance) {
+                num_tokens = guesstimate(JSON.stringify(req.body));
+                return res.send({ 'token_count': num_tokens });
+            }
             num_tokens = countWebTokenizerTokens(instance, req.body);
             return res.send({ 'token_count': num_tokens });
         }
 
         if (model === 'deepseek') {
             const instance = await deepseekTokenizer.get();
-            if (!instance) throw new Error('Failed to load the DeepSeek tokenizer');
+            if (!instance) {
+                num_tokens = guesstimate(JSON.stringify(req.body));
+                return res.send({ 'token_count': num_tokens });
+            }
             num_tokens = countWebTokenizerTokens(instance, req.body);
             return res.send({ 'token_count': num_tokens });
         }

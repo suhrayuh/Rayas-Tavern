@@ -1354,7 +1354,7 @@ async function onUpdateClick() {
  * @param {boolean} quiet If true, don't show a success message
  * @param {number?} timeout Timeout in milliseconds to wait for the update to complete. If null, no timeout is set.
  */
-async function updateExtension(extensionName, quiet, timeout = null) {
+async function updateExtension(extensionName, quiet, timeout = null, bulk = false) {
     try {
         const signal = timeout ? AbortSignal.timeout(timeout) : undefined;
         const response = await fetch('/api/extensions/update', {
@@ -1364,6 +1364,7 @@ async function updateExtension(extensionName, quiet, timeout = null) {
             body: JSON.stringify({
                 extensionName,
                 global: getExtensionType(extensionName) === 'global',
+				bulk,
             }),
         });
 
@@ -1375,6 +1376,10 @@ async function updateExtension(extensionName, quiet, timeout = null) {
         }
 
         const data = await response.json();
+
+        if (data.skipped) {
+            return;
+        }
 
         if (!quiet) {
             void showExtensionsDetails();
@@ -1998,7 +2003,7 @@ async function autoUpdateExtensions(forceAll) {
         }
         if ((forceAll || manifest.auto_update) && id.startsWith('third-party')) {
             console.debug(`Auto-updating 3rd-party extension: ${manifest.display_name} (${id})`);
-            promises.push(updateExtension(id.replace('third-party', ''), true, autoUpdateTimeout));
+            promises.push(updateExtension(id.replace('third-party', ''), true, autoUpdateTimeout, true));
         }
     }
     await Promise.allSettled(promises);

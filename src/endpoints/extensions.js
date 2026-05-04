@@ -172,7 +172,7 @@ router.post('/update', async (request, response) => {
             return response.status(400).send('Bad Request: A valid extensionName is required in the request body.');
         }
 
-        const { extensionName, global } = request.body;
+        const { extensionName, global, bulk } = request.body;
         const extensionNameSanitized = sanitize(extensionName);
         if (!extensionNameSanitized) {
             return response.status(400).send('Bad Request: A valid extensionName is required in the request body.');
@@ -190,12 +190,24 @@ router.post('/update', async (request, response) => {
             return response.status(404).send(`Directory does not exist at ${extensionPath}`);
         }
 
-        const { isUpToDate, remoteUrl } = await checkIfRepoIsUpToDate(extensionPath);
         const git = simpleGit({ baseDir: extensionPath, ...OPTIONS });
         const isRepo = await git.checkIsRepo(CheckRepoActions.IS_REPO_ROOT);
         if (!isRepo) {
+			if (bulk) {
+                return response.send({
+                    skipped: true,
+                    skipReason: 'not_a_git_repo',
+                    shortCommitHash: '',
+                    extensionPath,
+                    isUpToDate: true,
+                    remoteUrl: '',
+                });
+            }
+			
             throw new Error(`Directory is not a Git repository at ${extensionPath}`);
         }
+		
+		const { isUpToDate, remoteUrl } = await checkIfRepoIsUpToDate(extensionPath);
         const currentBranch = await git.branch();
         if (!isUpToDate) {
             await git.pull('origin', currentBranch.current);

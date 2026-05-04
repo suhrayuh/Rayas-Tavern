@@ -116,23 +116,26 @@
         "type": "git",
         "url": "https://github.com/SillyTavern/SillyTavern.git"
     },
-    "version": "1.18.0",
+    "version": "1.17.0",
     "scripts": {
         "init": "node src/server-init.js",
         "start": "node server.js",
-        "debug": "node --inspect server.js",
-        "start:global": "node server.js --global",
-        "start:electron": "cd ./src/electron && npm run start",
-        "start:deno": "deno run --allow-run --allow-net --allow-read --allow-write --allow-sys --allow-env server.js",
         "start:bun": "bun server.js",
         "start:bun:mobile": "bun --smol server.js",
         "start:bun:global": "bun server.js --global",
+        "debug": "node --inspect server.js",
+        "debug:bun": "bun --inspect server.js",
+        "start:global": "node server.js --global",
+        "start:electron": "cd ./src/electron && npm run start",
+        "start:deno": "deno run --allow-run --allow-net --allow-read --allow-write --allow-sys --allow-env server.js",
         "start:no-csrf": "node server.js --disableCsrf",
+        "postinstall": "node post-install.js",
         "lint": "eslint \"src/**/*.js\" \"public/**/*.js\" ./*.js",
         "lint:fix": "eslint \"src/**/*.js\" \"public/**/*.js\" ./*.js --fix",
         "plugins:update": "node plugins update",
         "plugins:install": "node plugins install"
     },
+    "packageManager": "bun@1.3.11",
     "bin": {
         "sillytavern": "./src/server-global.js"
     },

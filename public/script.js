@@ -1748,8 +1748,8 @@ export async function sendTextareaMessage() {
  */
 function normalizeItalicSpacing(html) {
     html = String(html || '');
-    html = html.replace(/([^\s>])(<(?:em|i)(?:\s[^>]*)?>)/giu, '$1 $2');
-    html = html.replace(/(<\/(?:em|i)>)([^\s<])/giu, '$1 $2');
+    html = html.replace(/([^\s>"'“”‘’«»「」『』])(<(?:em|i)(?:\s[^>]*)?>)/giu, '$1 $2');
+    html = html.replace(/(<\/(?:em|i)>)([^\s<"'“”‘’«»「」『』.,!?;:])/giu, '$1 $2');
     return html;
 }
 

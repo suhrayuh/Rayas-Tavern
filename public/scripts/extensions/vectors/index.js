@@ -63,6 +63,12 @@ const settings = {
     include_wi: false,
     togetherai_model: 'togethercomputer/m2-bert-80M-32k-retrieval',
     openai_model: 'text-embedding-ada-002',
+    openai_custom: {
+        enabled: false,
+        url: '',
+        model: '',
+        apiKey: '',
+    },
     electronhub_model: 'text-embedding-3-small',
     openrouter_model: 'openai/text-embedding-3-large',
     cohere_model: 'embed-english-v3.0',
@@ -81,6 +87,17 @@ const settings = {
     summary_retries: 2,
     summary_threshold: 200,
     force_chunk_delimiter: '',
+    filter_disp: true,
+    reranking: {
+        enabled: false,
+        activeProvider: 'cohere',
+        providers: {
+            cohere: { model: 'rerank-english-v3.0', apiKey: '', topK: 10 },
+            jina: { model: 'jina-reranker-v2-base-multilingual', apiKey: '', topK: 10 },
+            openai: { model: '', endpoint: '', apiKey: '', topK: 10 },
+            local: { topK: 10 },
+        },
+    },
 
     // For chats
     enabled_chats: false,
@@ -190,6 +207,122 @@ const remoteEmbeddingEndpoints = {
         getBody: () => ({ workers_ai_account_id: oai_settings.workers_ai_account_id }),
     },
 };
+
+const DISP_IDENTIFIER = 'disp';
+const DISP_WRAPPER_REGEX = /<div[^>]*display\s*:\s*none[^>]*>([\s\S]*?)<\/div>/gim;
+const DISP_BLOCK_REGEX = new RegExp('```' + DISP_IDENTIFIER + '[\\s\\S]*?```', 'gim');
+
+function mergeRerankingProviders(current = {}) {
+    const defaults = settings.reranking.providers;
+    return {
+        cohere: { ...defaults.cohere, ...(current.cohere || {}) },
+        jina: { ...defaults.jina, ...(current.jina || {}) },
+        openai: { ...defaults.openai, ...(current.openai || {}) },
+        local: { ...defaults.local, ...(current.local || {}) },
+    };
+}
+
+function normalizeVectorSettings(target) {
+    target.openai_custom = {
+        ...settings.openai_custom,
+        ...(target.openai_custom || {}),
+    };
+
+    const reranking = target.reranking || {};
+    if (!reranking.providers) {
+        const oldProvider = reranking.provider || 'cohere';
+        reranking.providers = mergeRerankingProviders({
+            [oldProvider]: {
+                model: reranking.model,
+                apiKey: reranking.apiKey,
+                endpoint: reranking.endpoint,
+                topK: reranking.topK,
+            },
+        });
+    } else {
+        reranking.providers = mergeRerankingProviders(reranking.providers);
+    }
+
+    target.reranking = {
+        enabled: false,
+        activeProvider: 'cohere',
+        ...reranking,
+        providers: reranking.providers,
+    };
+
+    if (typeof target.filter_disp !== 'boolean') {
+        target.filter_disp = true;
+    }
+}
+
+function migrateLegacyVectorSettings() {
+    const legacySettings = extension_settings['vector-custom-provider'];
+    if (!legacySettings) {
+        return;
+    }
+
+    if (legacySettings.customProvider && !settings.openai_custom.enabled && !settings.openai_custom.url && !settings.openai_custom.model && !settings.openai_custom.apiKey) {
+        settings.openai_custom = {
+            ...settings.openai_custom,
+            enabled: !!legacySettings.customProvider.enabled,
+            url: String(legacySettings.customProvider.url || ''),
+            model: String(legacySettings.customProvider.model || ''),
+            apiKey: String(legacySettings.customProvider.apiKey || ''),
+        };
+    }
+
+    if (legacySettings.reranking && !settings.reranking.enabled) {
+        const legacyReranking = legacySettings.reranking;
+        settings.reranking.enabled = !!legacyReranking.enabled;
+        settings.reranking.activeProvider = legacyReranking.activeProvider || legacyReranking.provider || settings.reranking.activeProvider;
+        settings.reranking.providers = mergeRerankingProviders(legacyReranking.providers || {
+            [legacyReranking.provider || 'cohere']: {
+                model: legacyReranking.model,
+                apiKey: legacyReranking.apiKey,
+                endpoint: legacyReranking.endpoint,
+                topK: legacyReranking.topK,
+            },
+        });
+    }
+}
+
+function getActiveRerankProviderSettings() {
+    return settings.reranking.providers[settings.reranking.activeProvider] || {};
+}
+
+function updateRerankProviderVisibility() {
+    const showSettings = !!settings.reranking.enabled;
+    const provider = settings.reranking.activeProvider;
+    const showEndpoint = provider === 'openai';
+    const showModel = provider !== 'local';
+
+    $('#vectors_rerank_settings').toggle(showSettings);
+    $('#vectors_rerank_endpoint_row').toggle(showEndpoint);
+    $('#vectors_rerank_model').prev('label').toggle(showModel);
+    $('#vectors_rerank_model').toggle(showModel);
+}
+
+function populateRerankProviderInputs() {
+    const providerSettings = getActiveRerankProviderSettings();
+    $('#vectors_rerank_provider').val(settings.reranking.activeProvider);
+    $('#vectors_rerank_model').val(providerSettings.model || '');
+    $('#vectors_rerank_endpoint').val(providerSettings.endpoint || '');
+    $('#vectors_rerank_api_key').val(providerSettings.apiKey || '');
+    $('#vectors_rerank_topk').val(providerSettings.topK ?? 10);
+    updateRerankProviderVisibility();
+}
+
+function stripDispBlocks(text) {
+    if (typeof text !== 'string') {
+        return text;
+    }
+
+    return text
+        .replace(DISP_WRAPPER_REGEX, '')
+        .replace(DISP_BLOCK_REGEX, '')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+}
 
 /**
  * Gets the Collection ID for a file embedded in the chat.
@@ -930,6 +1063,18 @@ async function getQueryText(chat, initiator) {
  */
 function getVectorsRequestBody(args = {}) {
     const body = Object.assign({}, args);
+    if (settings.filter_disp) {
+        body.filterDisp = true;
+    }
+
+    if (settings.reranking.enabled) {
+        body.rerank = {
+            enabled: true,
+            provider: settings.reranking.activeProvider,
+            ...getActiveRerankProviderSettings(),
+        };
+    }
+
     switch (settings.source) {
         case 'extras':
             body.extrasUrl = extension_settings.apiUrl;
@@ -946,6 +1091,16 @@ function getVectorsRequestBody(args = {}) {
             break;
         case 'openai':
             body.model = extension_settings.vectors.openai_model;
+            break;
+        case 'custom':
+            body.model = settings.openai_custom.model || extension_settings.vectors.openai_model;
+            if (settings.openai_custom.url) {
+                body.custom = {
+                    url: settings.openai_custom.url,
+                    model: settings.openai_custom.model,
+                    apiKey: settings.openai_custom.apiKey,
+                };
+            }
             break;
         case 'cohere':
             body.model = extension_settings.vectors.cohere_model;
@@ -1051,6 +1206,10 @@ async function getSavedHashes(collectionId) {
 async function insertVectorItems(collectionId, items) {
     throwIfSourceInvalid();
 
+    if (settings.filter_disp) {
+        items = items.map(item => ({ ...item, text: stripDispBlocks(item.text) }));
+    }
+
     const args = await getAdditionalArgs(items.map(x => x.text));
     const response = await fetch('/api/vector/insert', {
         method: 'POST',
@@ -1086,6 +1245,16 @@ function throwIfSourceInvalid() {
         settings.source === 'workers_ai' && !secret_state[SECRET_KEYS.WORKERS_AI] ||
         settings.source === 'siliconflow' && !secret_state[SECRET_KEYS.SILICONFLOW]) {
         throw new Error('Vectors: API key missing', { cause: 'api_key_missing' });
+    }
+
+    if (settings.source === 'custom') {
+        if (!settings.openai_custom.url) {
+            throw new Error('Vectors: API URL missing', { cause: 'api_url_missing' });
+        }
+
+        if (!settings.openai_custom.model) {
+            throw new Error('Vectors: API model missing', { cause: 'api_model_missing' });
+        }
     }
 
     if (vectorApiRequiresUrl.includes(settings.source) && settings.use_alt_endpoint) {
@@ -1149,6 +1318,10 @@ async function deleteVectorItems(collectionId, hashes) {
  * @returns {Promise<{ hashes: number[], metadata: object[]}>} - Hashes of the results
  */
 async function queryCollection(collectionId, searchText, topK) {
+    if (settings.filter_disp) {
+        searchText = stripDispBlocks(searchText);
+    }
+
     const args = await getAdditionalArgs([searchText]);
     const response = await fetch('/api/vector/query', {
         method: 'POST',
@@ -1179,6 +1352,10 @@ async function queryCollection(collectionId, searchText, topK) {
  * @returns {Promise<Record<string, { hashes: number[], metadata: object[] }>>} - Results mapped to collection IDs
  */
 async function queryMultipleCollections(collectionIds, searchText, topK, threshold) {
+    if (settings.filter_disp) {
+        searchText = stripDispBlocks(searchText);
+    }
+
     const args = await getAdditionalArgs([searchText]);
     const response = await fetch('/api/vector/query-multi', {
         method: 'POST',
@@ -1295,6 +1472,7 @@ function toggleSettings() {
     $('#vectors_world_info_settings').toggle(!!settings.enabled_world_info);
     $('#together_vectorsModel').toggle(settings.source === 'togetherai');
     $('#openai_vectorsModel').toggle(settings.source === 'openai');
+    $('#custom_vectorsModel').toggle(settings.source === 'custom');
     $('#electronhub_vectorsModel').toggle(settings.source === 'electronhub');
     $('#chutes_vectorsModel').toggle(settings.source === 'chutes');
     $('#nanogpt_vectorsModel').toggle(settings.source === 'nanogpt');
@@ -1315,6 +1493,8 @@ function toggleSettings() {
     } else if (settings.source in remoteEmbeddingEndpoints) {
         loadRemoteEmbeddingModels(settings.source);
     }
+
+    updateRerankProviderVisibility();
 }
 
 /**
@@ -1736,9 +1916,15 @@ export async function init() {
     }
 
     Object.assign(settings, extension_settings.vectors);
+    normalizeVectorSettings(settings);
+    migrateLegacyVectorSettings();
+    Object.assign(extension_settings.vectors, settings);
 
     // Migrate from TensorFlow to Transformers
     settings.source = settings.source !== 'local' ? settings.source : 'transformers';
+    if (settings.source === 'openai' && settings.openai_custom.enabled && settings.openai_custom.url) {
+        settings.source = 'custom';
+    }
     const template = await renderExtensionTemplateAsync(MODULE_NAME, 'settings');
     $('#vectors_container').append(template);
     $('#vectors_enabled_chats').prop('checked', settings.enabled_chats).on('input', () => {
@@ -1781,6 +1967,24 @@ export async function init() {
     });
     $('#vectors_openai_model').val(settings.openai_model).on('change', () => {
         settings.openai_model = String($('#vectors_openai_model').val());
+        Object.assign(extension_settings.vectors, settings);
+        saveSettingsDebounced();
+    });
+    $('#vectors_openai_custom_url').val(settings.openai_custom.url).on('input', () => {
+        settings.openai_custom.url = String($('#vectors_openai_custom_url').val()).trim();
+        settings.openai_custom.enabled = !!settings.openai_custom.url;
+        Object.assign(extension_settings.vectors, settings);
+        saveSettingsDebounced();
+    });
+    $('#vectors_openai_custom_model').val(settings.openai_custom.model).on('input', () => {
+        settings.openai_custom.model = String($('#vectors_openai_custom_model').val()).trim();
+        settings.openai_custom.enabled = !!settings.openai_custom.url;
+        Object.assign(extension_settings.vectors, settings);
+        saveSettingsDebounced();
+    });
+    $('#vectors_openai_custom_api_key').val(settings.openai_custom.apiKey).on('input', () => {
+        settings.openai_custom.apiKey = String($('#vectors_openai_custom_api_key').val());
+        settings.openai_custom.enabled = !!settings.openai_custom.url;
         Object.assign(extension_settings.vectors, settings);
         saveSettingsDebounced();
     });
@@ -2024,6 +2228,70 @@ export async function init() {
         Object.assign(extension_settings.vectors, settings);
         saveSettingsDebounced();
     });
+    $('#vectors_filter_disp').prop('checked', settings.filter_disp).on('input', () => {
+        settings.filter_disp = !!$('#vectors_filter_disp').prop('checked');
+        Object.assign(extension_settings.vectors, settings);
+        saveSettingsDebounced();
+    });
+    $('#vectors_rerank_enabled').prop('checked', settings.reranking.enabled).on('input', () => {
+        settings.reranking.enabled = !!$('#vectors_rerank_enabled').prop('checked');
+        Object.assign(extension_settings.vectors, settings);
+        saveSettingsDebounced();
+        updateRerankProviderVisibility();
+    });
+    $('#vectors_rerank_provider').on('change', () => {
+        settings.reranking.activeProvider = String($('#vectors_rerank_provider').val());
+        Object.assign(extension_settings.vectors, settings);
+        saveSettingsDebounced();
+        populateRerankProviderInputs();
+    });
+    $('#vectors_rerank_model').on('input', () => {
+        getActiveRerankProviderSettings().model = String($('#vectors_rerank_model').val()).trim();
+        Object.assign(extension_settings.vectors, settings);
+        saveSettingsDebounced();
+    });
+    $('#vectors_rerank_endpoint').on('input', () => {
+        getActiveRerankProviderSettings().endpoint = String($('#vectors_rerank_endpoint').val()).trim();
+        Object.assign(extension_settings.vectors, settings);
+        saveSettingsDebounced();
+    });
+    $('#vectors_rerank_api_key').on('input', () => {
+        getActiveRerankProviderSettings().apiKey = String($('#vectors_rerank_api_key').val());
+        Object.assign(extension_settings.vectors, settings);
+        saveSettingsDebounced();
+    });
+    $('#vectors_rerank_topk').on('input', () => {
+        const parsed = Number($('#vectors_rerank_topk').val());
+        getActiveRerankProviderSettings().topK = Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 10;
+        Object.assign(extension_settings.vectors, settings);
+        saveSettingsDebounced();
+    });
+    $('#vectors_rerank_test').on('click', async () => {
+        const $status = $('#vectors_rerank_status small');
+        try {
+            const response = await fetch('/api/vector/rerank-test', {
+                method: 'POST',
+                headers: getRequestHeaders(),
+                body: JSON.stringify({
+                    rerank: {
+                        enabled: true,
+                        provider: settings.reranking.activeProvider,
+                        ...getActiveRerankProviderSettings(),
+                    },
+                }),
+            });
+
+            if (!response.ok) {
+                const text = await response.text();
+                throw new Error(text || `HTTP ${response.status}`);
+            }
+
+            const data = await response.json();
+            $status.text(`Passed with ${data.count} result(s).`);
+        } catch (error) {
+            $status.text(`Failed: ${error.message}`);
+        }
+    });
 
     $('#vectors_force_chunk_delimiter').val(settings.force_chunk_delimiter).on('input', () => {
         settings.force_chunk_delimiter = String($('#vectors_force_chunk_delimiter').val());
@@ -2075,6 +2343,7 @@ export async function init() {
     });
 
     $('#api_key_nomicai').toggleClass('success', !!secret_state[SECRET_KEYS.NOMICAI]);
+    populateRerankProviderInputs();
     [event_types.SECRET_WRITTEN, event_types.SECRET_DELETED, event_types.SECRET_ROTATED].forEach(event => {
         eventSource.on(event, (/** @type {string} */ key) => {
             if (key !== SECRET_KEYS.NOMICAI) return;

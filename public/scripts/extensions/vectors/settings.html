@@ -13,6 +13,7 @@
                     <option value="chutes">Chutes</option>
                     <option value="workers_ai">Cloudflare Workers AI</option>
                     <option value="cohere">Cohere</option>
+                    <option value="custom">Custom</option>
                     <option value="electronhub">Electron Hub</option>
                     <option value="extras">Extras (deprecated)</option>
                     <option value="palm">Google AI Studio</option>
@@ -126,6 +127,15 @@
                     <option value="text-embedding-3-large">text-embedding-3-large</option>
                 </select>
             </div>
+            <div class="flex-container flexFlowColumn" id="custom_vectorsModel">
+                <label for="vectors_openai_custom_url">Embedding endpoint URL</label>
+                <input id="vectors_openai_custom_url" class="text_pole" type="text" placeholder="http://localhost:8080/v1/embeddings" />
+                <label for="vectors_openai_custom_model">Model name</label>
+                <input id="vectors_openai_custom_model" class="text_pole" type="text" placeholder="text-embedding-3-small" />
+                <label for="vectors_openai_custom_api_key">API key (optional)</label>
+                <input id="vectors_openai_custom_api_key" class="text_pole" type="password" placeholder="sk-..." />
+                <small>Uses an OpenAI-compatible embeddings endpoint. These values are stored in extension settings, matching the previous local extension behavior.</small>
+            </div>
             <div class="flex-container flexFlowColumn" id="cohere_vectorsModel">
                 <label for="vectors_cohere_model" data-i18n="Vectorization Model">
                     Vectorization Model
@@ -234,6 +244,40 @@
                         <small data-i18n="Chunk boundary">Chunk boundary</small>
                     </label>
                     <textarea id="vectors_force_chunk_delimiter" class="text_pole" rows="1" placeholder="(None)"></textarea>
+                </div>
+            </div>
+
+            <label class="checkbox_label" for="vectors_filter_disp" title="Strip disp tracker blocks and hidden wrapper content before vector insert/query requests.">
+                <input id="vectors_filter_disp" type="checkbox" class="checkbox">
+                <span>Strip disp blocks before vectorization</span>
+            </label>
+
+            <div class="marginTopBot5">
+                <h4>Reranking</h4>
+                <label class="checkbox_label" for="vectors_rerank_enabled" title="Apply a reranking pass after vector retrieval.">
+                    <input id="vectors_rerank_enabled" type="checkbox" class="checkbox">
+                    <span>Enable reranking</span>
+                </label>
+                <div id="vectors_rerank_settings" class="flex-container flexFlowColumn marginTopBot5">
+                    <label for="vectors_rerank_provider">Reranking provider</label>
+                    <select id="vectors_rerank_provider" class="text_pole">
+                        <option value="cohere">Cohere</option>
+                        <option value="jina">Jina AI</option>
+                        <option value="openai">OpenAI-Compatible</option>
+                        <option value="local">Local (Cosine Similarity)</option>
+                    </select>
+                    <label for="vectors_rerank_model">Model name</label>
+                    <input id="vectors_rerank_model" class="text_pole" type="text" placeholder="rerank-english-v3.0" />
+                    <div id="vectors_rerank_endpoint_row" class="flex-container flexFlowColumn">
+                        <label for="vectors_rerank_endpoint">Endpoint URL</label>
+                        <input id="vectors_rerank_endpoint" class="text_pole" type="text" placeholder="http://localhost:8080/v1/rerank" />
+                    </div>
+                    <label for="vectors_rerank_api_key">API key</label>
+                    <input id="vectors_rerank_api_key" class="text_pole" type="password" placeholder="sk-..." />
+                    <label for="vectors_rerank_topk">Top-K results to return</label>
+                    <input id="vectors_rerank_topk" class="text_pole" type="number" min="1" max="100" />
+                    <button id="vectors_rerank_test" class="menu_button" type="button">Test reranking</button>
+                    <div id="vectors_rerank_status"><small></small></div>
                 </div>
             </div>
 

@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import vectra from 'vectra';
 import express from 'express';
 import sanitize from 'sanitize-filename';
+import fetch from 'node-fetch';
 
 import { getConfigValue } from '../util.js';
 
@@ -18,10 +19,205 @@ import { getLlamaCppVector, getLlamaCppBatchVector } from '../vectors/llamacpp-v
 import { getVllmVector, getVllmBatchVector } from '../vectors/vllm-vectors.js';
 import { getOllamaVector, getOllamaBatchVector } from '../vectors/ollama-vectors.js';
 
+const DISP_IDENTIFIER = 'disp';
+const DISP_WRAPPER_REGEX = /<div[^>]*display\s*:\s*none[^>]*>([\s\S]*?)<\/div>/gim;
+const DISP_BLOCK_REGEX = new RegExp('```' + DISP_IDENTIFIER + '[\\s\\S]*?```', 'gim');
+
+function stripDispBlocks(text) {
+    if (typeof text !== 'string') {
+        return text;
+    }
+
+    return text
+        .replace(DISP_WRAPPER_REGEX, '')
+        .replace(DISP_BLOCK_REGEX, '')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+}
+
+function cosineSimilarity(a, b) {
+    const dotProduct = a.reduce((sum, val, i) => sum + val * b[i], 0);
+    const magnitudeA = Math.sqrt(a.reduce((sum, val) => sum + val * val, 0));
+    const magnitudeB = Math.sqrt(b.reduce((sum, val) => sum + val * val, 0));
+    return dotProduct / (magnitudeA * magnitudeB);
+}
+
+function resolveRankedItem(r, fallbackIdx, results) {
+    const apiIndex = typeof r.index === 'number'
+        ? r.index
+        : typeof r.document?.index === 'number'
+            ? r.document.index
+            : fallbackIdx;
+    const origItem = results[apiIndex] ?? results[fallbackIdx] ?? results[0];
+    return { apiIndex, origItem };
+}
+
+async function rerankCohere(results, query, settings) {
+    const response = await fetch('https://api.cohere.ai/v1/rerank', {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${settings.apiKey}`,
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            model: settings.model,
+            query,
+            documents: results.map(r => r.text),
+            top_n: settings.topK,
+        }),
+    });
+
+    if (!response.ok) {
+        const errBody = await response.text().catch(() => response.statusText);
+        throw new Error(`Cohere API error (${response.status}): ${errBody}`);
+    }
+
+    const data = await response.json();
+    return data.results.map((r, fallbackIdx) => {
+        const { origItem, apiIndex } = resolveRankedItem(r, fallbackIdx, results);
+        return { ...origItem, originalIndex: origItem.originalIndex ?? apiIndex };
+    });
+}
+
+async function rerankJina(results, query, settings) {
+    const response = await fetch('https://api.jina.ai/v1/rerank', {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${settings.apiKey}`,
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            model: settings.model,
+            query,
+            documents: results.map(r => r.text),
+            top_n: settings.topK,
+        }),
+    });
+
+    if (!response.ok) {
+        const errBody = await response.text().catch(() => response.statusText);
+        throw new Error(`Jina API error (${response.status}): ${errBody}`);
+    }
+
+    const data = await response.json();
+    return data.results.map((r, fallbackIdx) => {
+        const { origItem, apiIndex } = resolveRankedItem(r, fallbackIdx, results);
+        return { ...origItem, originalIndex: origItem.originalIndex ?? apiIndex };
+    });
+}
+
+async function rerankOpenAICompatible(results, query, settings) {
+    const headers = { 'Content-Type': 'application/json' };
+    if (settings.apiKey) {
+        headers.Authorization = `Bearer ${settings.apiKey}`;
+    }
+
+    const response = await fetch(settings.endpoint, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+            model: settings.model,
+            query,
+            documents: results.map(r => r.text),
+            top_n: settings.topK,
+        }),
+    });
+
+    if (!response.ok) {
+        const errBody = await response.text().catch(() => response.statusText);
+        throw new Error(`Rerank API error (${response.status}): ${errBody}`);
+    }
+
+    const data = await response.json();
+    return data.results.map((r, fallbackIdx) => {
+        const { origItem, apiIndex } = resolveRankedItem(r, fallbackIdx, results);
+        return { ...origItem, originalIndex: origItem.originalIndex ?? apiIndex };
+    });
+}
+
+function rerankLocal(results, settings) {
+    if (!results[0]?.vector) {
+        return results.slice(0, settings.topK).map((r, i) => ({ ...r, originalIndex: typeof r.originalIndex === 'number' ? r.originalIndex : i }));
+    }
+
+    const queryVector = results[0].vector;
+    return results
+        .map((r, i) => ({
+            ...r,
+            originalIndex: typeof r.originalIndex === 'number' ? r.originalIndex : i,
+            score: cosineSimilarity(queryVector, r.vector),
+        }))
+        .sort((a, b) => b.score - a.score)
+        .slice(0, settings.topK);
+}
+
+async function rerankResults(results, query, settings) {
+    switch (settings.provider) {
+        case 'cohere':
+            return rerankCohere(results, query, settings);
+        case 'jina':
+            return rerankJina(results, query, settings);
+        case 'openai':
+            return rerankOpenAICompatible(results, query, settings);
+        case 'local':
+            return rerankLocal(results, settings);
+        default:
+            return results.map((r, i) => ({ ...r, originalIndex: typeof r.originalIndex === 'number' ? r.originalIndex : i }));
+    }
+}
+
+async function applyReranking(queryResults, searchText, rerank) {
+    if (!rerank?.enabled) {
+        return queryResults;
+    }
+
+    const topK = Number(rerank.topK) || 10;
+    const allItems = [];
+    for (const [collectionId, collectionData] of Object.entries(queryResults)) {
+        if (!collectionData || !Array.isArray(collectionData.metadata)) {
+            continue;
+        }
+
+        for (let i = 0; i < collectionData.metadata.length; i++) {
+            const meta = collectionData.metadata[i];
+            const hash = collectionData.hashes?.[i];
+            if (meta?.text) {
+                allItems.push({ collectionId, meta, hash, text: meta.text, vector: collectionData.vectors?.[i], originalIndex: i });
+            }
+        }
+    }
+
+    if (!allItems.length) {
+        return queryResults;
+    }
+
+    const rerankedItems = (await rerankResults(allItems, searchText, { ...rerank, topK })).slice(0, topK);
+    const rerankedResults = {};
+
+    for (let rankPos = 0; rankPos < rerankedItems.length; rankPos++) {
+        const item = rerankedItems[rankPos];
+        if (!rerankedResults[item.collectionId]) {
+            rerankedResults[item.collectionId] = { hashes: [], metadata: [] };
+        }
+
+        rerankedResults[item.collectionId].hashes.push(item.hash);
+        rerankedResults[item.collectionId].metadata.push({ ...item.meta, index: rankPos });
+    }
+
+    for (const [collectionId, collectionData] of Object.entries(queryResults)) {
+        if (!rerankedResults[collectionId] && collectionData) {
+            rerankedResults[collectionId] = { hashes: [], metadata: [] };
+        }
+    }
+
+    return rerankedResults;
+}
+
 // Don't forget to add new sources to the SOURCES array
 const SOURCES = [
     'transformers',
     'mistral',
+    'custom',
     'openai',
     'extras',
     'palm',
@@ -57,8 +253,9 @@ async function getVector(source, sourceSettings, text, isQuery, directories) {
             return getNomicAIVector(text, source, directories);
         case 'togetherai':
         case 'mistral':
+        case 'custom':
         case 'openai':
-            return getOpenAIVector(text, source, directories, sourceSettings.model);
+            return getOpenAIVector(text, source, directories, sourceSettings.model, sourceSettings.urlOverride, sourceSettings.apiKeyOverride);
         case 'electronhub':
             return getOpenAIVector(text, source, directories, sourceSettings.model);
         case 'openrouter':
@@ -117,8 +314,9 @@ async function getBatchVector(source, sourceSettings, texts, isQuery, directorie
                 break;
             case 'togetherai':
             case 'mistral':
+            case 'custom':
             case 'openai':
-                results.push(...await getOpenAIBatchVector(batch, source, directories, sourceSettings.model));
+                results.push(...await getOpenAIBatchVector(batch, source, directories, sourceSettings.model, sourceSettings.urlOverride, sourceSettings.apiKeyOverride));
                 break;
             case 'electronhub':
                 results.push(...await getOpenAIBatchVector(batch, source, directories, sourceSettings.model));
@@ -190,7 +388,15 @@ function getSourceSettings(source, request) {
             };
         case 'openai':
             return {
-                model: String(request.body.model),
+                model: String(request.body.custom?.model || request.body.model),
+                urlOverride: request.body.custom?.url || null,
+                apiKeyOverride: request.body.custom?.apiKey || null,
+            };
+        case 'custom':
+            return {
+                model: String(request.body.custom?.model || request.body.model),
+                urlOverride: request.body.custom?.url || null,
+                apiKeyOverride: request.body.custom?.apiKey || null,
             };
         case 'electronhub':
             return {
@@ -387,9 +593,11 @@ async function queryCollection(directories, collectionId, source, sourceSettings
     const vector = await getVector(source, sourceSettings, searchText, true, directories);
 
     const result = await store.queryItems(vector, topK);
-    const metadata = result.filter(x => x.score >= threshold).map(x => x.item.metadata);
-    const hashes = result.map(x => Number(x.item.metadata.hash));
-    return { metadata, hashes };
+    const filtered = result.filter(x => x.score >= threshold);
+    const metadata = filtered.map(x => x.item.metadata);
+    const hashes = filtered.map(x => Number(x.item.metadata.hash));
+    const vectors = filtered.map(x => x.item.vector);
+    return { metadata, hashes, vectors };
 }
 
 /**
@@ -427,11 +635,12 @@ async function multiQueryCollection(directories, collectionIds, source, sourceSe
     const groupedResults = {};
     for (const result of sortedResults) {
         if (!groupedResults[result.collectionId]) {
-            groupedResults[result.collectionId] = { hashes: [], metadata: [] };
+            groupedResults[result.collectionId] = { hashes: [], metadata: [], vectors: [] };
         }
 
         groupedResults[result.collectionId].hashes.push(Number(result.result.item.metadata.hash));
         groupedResults[result.collectionId].metadata.push(result.result.item.metadata);
+        groupedResults[result.collectionId].vectors.push(result.result.item.vector);
     }
 
     return groupedResults;
@@ -476,13 +685,19 @@ router.post('/query', async (req, res) => {
         }
 
         const collectionId = String(req.body.collectionId);
-        const searchText = String(req.body.searchText);
+        const searchText = req.body.filterDisp ? stripDispBlocks(String(req.body.searchText)) : String(req.body.searchText);
         const topK = Number(req.body.topK) || 10;
         const threshold = Number(req.body.threshold) || 0.0;
         const source = String(req.body.source) || 'transformers';
         const sourceSettings = getSourceSettings(source, req);
 
-        const results = await queryCollection(req.user.directories, collectionId, source, sourceSettings, searchText, topK, threshold);
+        let results = await queryCollection(req.user.directories, collectionId, source, sourceSettings, searchText, topK, threshold);
+        if (req.body.rerank?.enabled) {
+            results = await applyReranking({ [collectionId]: results }, searchText, req.body.rerank);
+            results = results[collectionId] || { hashes: [], metadata: [] };
+        } else {
+            delete results.vectors;
+        }
         return res.json(results);
     } catch (error) {
         return regenerateCorruptedIndexErrorHandler(req, res, error);
@@ -496,13 +711,20 @@ router.post('/query-multi', async (req, res) => {
         }
 
         const collectionIds = req.body.collectionIds.map(x => String(x));
-        const searchText = String(req.body.searchText);
+        const searchText = req.body.filterDisp ? stripDispBlocks(String(req.body.searchText)) : String(req.body.searchText);
         const topK = Number(req.body.topK) || 10;
         const threshold = Number(req.body.threshold) || 0.0;
         const source = String(req.body.source) || 'transformers';
         const sourceSettings = getSourceSettings(source, req);
 
-        const results = await multiQueryCollection(req.user.directories, collectionIds, source, sourceSettings, searchText, topK, threshold);
+        let results = await multiQueryCollection(req.user.directories, collectionIds, source, sourceSettings, searchText, topK, threshold);
+        if (req.body.rerank?.enabled) {
+            results = await applyReranking(results, searchText, req.body.rerank);
+        } else {
+            for (const value of Object.values(results)) {
+                delete value.vectors;
+            }
+        }
         return res.json(results);
     } catch (error) {
         return regenerateCorruptedIndexErrorHandler(req, res, error);
@@ -516,7 +738,11 @@ router.post('/insert', async (req, res) => {
         }
 
         const collectionId = String(req.body.collectionId);
-        const items = req.body.items.map(x => ({ hash: x.hash, text: x.text, index: x.index }));
+        const items = req.body.items.map(x => ({
+            hash: x.hash,
+            text: req.body.filterDisp ? stripDispBlocks(x.text) : x.text,
+            index: x.index,
+        }));
         const source = String(req.body.source) || 'transformers';
         const sourceSettings = getSourceSettings(source, req);
 
@@ -559,6 +785,25 @@ router.post('/delete', async (req, res) => {
         return res.sendStatus(200);
     } catch (error) {
         return regenerateCorruptedIndexErrorHandler(req, res, error);
+    }
+});
+
+router.post('/rerank-test', async (req, res) => {
+    try {
+        if (!req.body.rerank?.enabled) {
+            return res.sendStatus(400);
+        }
+
+        const results = await rerankResults([
+            { text: 'The quick brown fox jumps over the lazy dog.', originalIndex: 0 },
+            { text: 'SillyTavern is a local AI frontend for chat roleplay.', originalIndex: 1 },
+            { text: 'Reranking improves retrieval quality by re-scoring results.', originalIndex: 2 },
+        ], 'What is SillyTavern?', req.body.rerank);
+
+        return res.json({ count: results.length });
+    } catch (error) {
+        console.error('[vectors] Rerank test failed:', error);
+        return res.status(500).send(error.message);
     }
 });
 

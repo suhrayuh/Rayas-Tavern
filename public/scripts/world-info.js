@@ -334,7 +334,9 @@ async function generateWorldInfoEntrySummaries(entries) {
             content: String(entry.content || ''),
         })), null, 2),
     ].join('\n');
-    const maxTokens = undefined;
+    const maxTokens = Number.isFinite(Number(aiSettings.maxOutputTokens))
+        ? Number(aiSettings.maxOutputTokens)
+        : DEFAULT_AI_WORLD_INFO_SETTINGS.maxOutputTokens;
 
     let responseText = '';
 
@@ -399,7 +401,11 @@ async function generateWorldInfoEntrySummaries(entries) {
             throw new Error('No AI World Info connection profile selected');
         }
 
-        const response = await ConnectionManagerRequestService.sendRequest(profileId, prompt, 4000, { stream: false, extractData: true });
+        const response = await ConnectionManagerRequestService.sendRequest(profileId, prompt, maxTokens, {
+            stream: false,
+            extractData: true,
+            includePreset: false,
+        });
         responseText = String(extractConnectionManagerResponseText(response) || '').trim();
     }
 
@@ -435,11 +441,8 @@ async function runAIWorldInfoSearch({ chat, normalEntries, maxOutputTokens }) {
 
     const entryPayload = normalEntries.map(entry => ({
         uid: entry.uid,
-        world: entry.world,
         title: entry.comment || entry.key?.[0] || `Entry ${entry.uid}`,
         summary: getWorldInfoEntrySummary(entry) || '',
-        key: Array.isArray(entry.key) ? entry.key : [],
-        keysecondary: Array.isArray(entry.keysecondary) ? entry.keysecondary : [],
     }));
 
     const prompt = [
@@ -454,7 +457,11 @@ async function runAIWorldInfoSearch({ chat, normalEntries, maxOutputTokens }) {
         JSON.stringify(entryPayload),
     ].join('\n');
 
-    const response = await ConnectionManagerRequestService.sendRequest(profileId, prompt, maxOutputTokens, { stream: false, extractData: true });
+    const response = await ConnectionManagerRequestService.sendRequest(profileId, prompt, maxOutputTokens, {
+        stream: false,
+        extractData: true,
+        includePreset: false,
+    });
     const responseText = extractConnectionManagerResponseText(response);
     const jsonPayload = extractJSONPayload(responseText);
 

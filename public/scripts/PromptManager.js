@@ -6,7 +6,7 @@ import { event_types, eventSource, is_send_press, main_api, substituteParams } f
 import { is_group_generating } from './group-chats.js';
 import { Message, MessageCollection, TokenHandler } from './openai.js';
 import { power_user } from './power-user.js';
-import { debounce, waitUntilCondition, escapeHtml, uuidv4 } from './utils.js';
+import { debounce, waitUntilCondition, escapeHtml, uuidv4, download } from './utils.js';
 import { debounce_timeout } from './constants.js';
 import { renderTemplateAsync } from './templates.js';
 import { Popup } from './popup.js';
@@ -385,6 +385,9 @@ class PromptManager {
         /** Edit prompt button click */
         this.handleEdit = () => { };
 
+        /** Export single prompt button click */
+        this.handleExportSinglePrompt = () => { };
+
         /** Detach prompt button click */
         this.handleDetach = () => { };
 
@@ -462,6 +465,20 @@ class PromptManager {
             this.loadPromptIntoEditForm(prompt);
 
             this.showPopup();
+        };
+
+        this.handleExportSinglePrompt = (event) => {
+            const promptID = event.target.closest('.' + this.configuration.prefix + 'prompt_manager_prompt').dataset.pmIdentifier;
+            const prompt = this.getPromptById(promptID);
+            if (!prompt) {
+                return;
+            }
+
+            const safeName = String(prompt.name || promptID || 'prompt').replace(/[\\/:*?"<>|]/g, '_').trim() || 'prompt';
+            const exportPayload = { content: String(prompt.content || ''), prompt, fileName: `${safeName}.md` };
+            eventSource.emit(event_types.PROMPT_MANAGER_PROMPT_EXPORT_READY, exportPayload).finally(() => {
+                download(exportPayload.content, exportPayload.fileName, 'text/markdown;charset=utf-8');
+            });
         };
 
         // Open edit form and load selected prompt
@@ -1709,6 +1726,10 @@ class PromptManager {
                 editSpanHtml = '<span class="fa-solid"></span>';
             }
 
+            const exportSpanHtml = `
+                <span title="Export prompt as Markdown" class="prompt-manager-export-single-action fa-solid fa-file-arrow-down fa-xs"></span>
+            `;
+
             let toggleSpanHtml = '';
             if (this.isPromptToggleAllowed(prompt)) {
                 toggleSpanHtml = `
@@ -1754,6 +1775,7 @@ class PromptManager {
                             <span class="prompt_manager_prompt_controls">
                                 ${detachSpanHtml}
                                 ${editSpanHtml}
+                                ${exportSpanHtml}
                                 ${toggleSpanHtml}
                             </span>
                     </span>
@@ -1776,6 +1798,10 @@ class PromptManager {
 
         Array.from(promptManagerList.getElementsByClassName('prompt-manager-edit-action')).forEach(el => {
             el.addEventListener('click', this.handleEdit);
+        });
+
+        Array.from(promptManagerList.getElementsByClassName('prompt-manager-export-single-action')).forEach(el => {
+            el.addEventListener('click', this.handleExportSinglePrompt);
         });
 
         Array.from(promptManagerList.querySelectorAll('.prompt-manager-toggle-action')).forEach(el => {

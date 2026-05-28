@@ -108,6 +108,7 @@ export const event_types = {
     ITEMIZED_PROMPTS_LOADED: 'itemized_prompts_loaded',
     ITEMIZED_PROMPTS_SAVED: 'itemized_prompts_saved',
     ITEMIZED_PROMPTS_DELETED: 'itemized_prompts_deleted',
+    PROMPT_MANAGER_PROMPT_EXPORT_READY: 'prompt_manager_prompt_export_ready',
 };
 
 export const eventSource = new EventEmitter([event_types.APP_READY, event_types.APP_INITIALIZED]);

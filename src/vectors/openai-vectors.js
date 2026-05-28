@@ -126,7 +126,9 @@ export async function getOpenAIBatchVector(texts, source, directories, model = '
         config.processBody(body);
     }
 
-    const response = await fetch(resolveEmbeddingsUrl(url), {
+    const resolvedUrl = resolveEmbeddingsUrl(url);
+
+    const response = await fetch(resolvedUrl, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -138,23 +140,48 @@ export async function getOpenAIBatchVector(texts, source, directories, model = '
 
     if (!response.ok) {
         const text = await response.text();
-        console.warn('API request failed', response.statusText, text);
-        throw new Error('API request failed');
+        console.warn(`[Vectors] API request failed (source=${source}, model=${modelName}, url=${resolvedUrl}):`, response.status, response.statusText, text);
+        throw new Error(`API request failed: ${response.status} ${response.statusText} - ${text.substring(0, 200)}`);
     }
 
     /** @type {any} */
     const data = await response.json();
 
-    if (!Array.isArray(data?.data)) {
-        console.warn('API response was not an array');
-        throw new Error('API response was not an array');
+    // Detect error responses that came with HTTP 200 (common with proxies/OpenRouter)
+    if (data?.error) {
+        const errMsg = data.error.message || data.error.code || JSON.stringify(data.error);
+        console.warn(`[Vectors] Upstream returned error in response body (source=${source}, model=${modelName}):`, errMsg);
+        throw new Error(`Upstream embedding error: ${errMsg}`);
     }
 
-    // Sort data by x.index to ensure the order is correct
-    data.data.sort((a, b) => a.index - b.index);
+    // OpenAI format: { data: [{ embedding: [...], index: N }] }
+    if (Array.isArray(data?.data) && data.data[0]?.embedding) {
+        data.data.sort((a, b) => a.index - b.index);
+        return data.data.map(x => x.embedding);
+    }
 
-    const vectors = data.data.map(x => x.embedding);
-    return vectors;
+    // Google AI Studio / Gemini format: { embeddings: [{ values: [...] }] }
+    if (Array.isArray(data?.embeddings) && data.embeddings[0]?.values) {
+        return data.embeddings.map(x => x.values);
+    }
+
+    // Google Vertex AI format: { predictions: [{ embeddings: { values: [...] } }] }
+    if (Array.isArray(data?.predictions) && data.predictions[0]?.embeddings?.values) {
+        return data.predictions.map(x => x.embeddings.values);
+    }
+
+    // Single embedding wrapped in object: { embedding: [...] }
+    if (Array.isArray(data?.embedding)) {
+        return [data.embedding];
+    }
+
+    // Flat array of numbers (single text input, raw vector response)
+    if (Array.isArray(data) && typeof data[0] === 'number') {
+        return [data];
+    }
+
+    console.warn('API response was not in a recognized embedding format. Keys:', Object.keys(data || {}));
+    throw new Error('API response was not in a recognized embedding format');
 }
 
 /**

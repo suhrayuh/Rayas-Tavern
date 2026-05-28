@@ -77,6 +77,13 @@ export const world_info_activation_mode = {
     ai_only: 2,
 };
 
+export const world_info_entry_state = {
+    constant: 'constant',
+    normal: 'normal',
+    vectorized: 'vectorized',
+    vectorized_ai: 'vectorized_ai',
+};
+
 export const world_info_ai_confidence_threshold = {
     all: 'all',
     medium_high: 'medium_high',
@@ -137,7 +144,13 @@ export function consumeLatestWorldInfoTrace() {
 }
 
 function getLoreEntryState(entry) {
-    return entry.constant === true ? 'constant' : entry.vectorized === true ? 'vectorized' : 'normal';
+    return entry.constant === true
+        ? world_info_entry_state.constant
+        : entry.vectorizedAI === true
+            ? world_info_entry_state.vectorized_ai
+            : entry.vectorized === true
+                ? world_info_entry_state.vectorized
+                : world_info_entry_state.normal;
 }
 
 function clearWorldInfoAIFlags(entries = []) {
@@ -146,6 +159,29 @@ function clearWorldInfoAIFlags(entries = []) {
         delete entry.aiConfidence;
         delete entry.aiSelected;
         delete entry.keywordTriggered;
+    }
+}
+
+async function getAIVectoredCandidates(chat, entries) {
+    if (!Array.isArray(entries) || entries.length === 0) {
+        return [];
+    }
+
+    const vectorSettings = extension_settings.vectors || {};
+    const threshold = Number.isFinite(Number(vectorSettings.ai_vectored_score_threshold))
+        ? Number(vectorSettings.ai_vectored_score_threshold)
+        : 0.15;
+    const topK = Number.isFinite(Number(vectorSettings.ai_vectored_max_candidates)) && Number(vectorSettings.ai_vectored_max_candidates) > 0
+        ? Math.floor(Number(vectorSettings.ai_vectored_max_candidates))
+        : 20;
+
+    try {
+        const { recallVectorWorldInfoEntries } = await import('./extensions/vectors/index.js');
+        return await recallVectorWorldInfoEntries(entries, chat, topK, threshold);
+    } catch (error) {
+        console.error('[WI] AI-vectored prefilter failed, falling back to direct AI search', error);
+        toastr.warning('AI-vectored embedding prefilter failed. Falling back to direct AI search.', 'World Info');
+        return entries;
     }
 }
 
@@ -242,7 +278,7 @@ function getWorldInfoSummaryKey(world, uid) {
     return `${world}::${uid}`;
 }
 
-function getWorldInfoEntrySummary(entry, worldName = undefined) {
+export function getWorldInfoEntrySummary(entry, worldName = undefined) {
     const world = worldName || entry.world;
     return ensureAIWorldInfoSettings().summaries?.[getWorldInfoSummaryKey(world, entry.uid)] ?? '';
 }
@@ -3143,6 +3179,7 @@ export const originalWIDataKeyMap = {
     'scanDepth': 'extensions.scan_depth',
     'automationId': 'extensions.automation_id',
     'vectorized': 'extensions.vectorized',
+    'vectorizedAI': 'extensions.vectorized_ai',
     'groupOverride': 'extensions.group_override',
     'groupWeight': 'extensions.group_weight',
     'sticky': 'extensions.sticky',
@@ -3703,7 +3740,7 @@ function handleNumberInputHelper({ inputElem, entry, entryKey, data, name, min, 
 }
 
 /**
- * Helper to handle tri-state selector for constant/normal/vectorized.
+ * Helper to handle entry state selector for constant/normal/vectorized/vectorized_ai.
  * @param {object} params - Parameters for handling the entry state selector.
  * @param {JQuery<HTMLElement>} params.entryStateSelector - The select element for entry state.
  * @param {object} params.entry - The entry object containing the state.
@@ -3719,28 +3756,48 @@ function handleEntryStateSelectorHelper({ entryStateSelector, entry, data, name 
         const uid = entry.uid;
         const value = $(this).val();
         switch (value) {
-            case 'constant':
+            case world_info_entry_state.constant:
                 data.entries[uid].constant = true;
                 data.entries[uid].vectorized = false;
+                data.entries[uid].vectorizedAI = false;
                 setWIOriginalDataValue(data, uid, 'constant', true);
                 setWIOriginalDataValue(data, uid, 'extensions.vectorized', false);
+                setWIOriginalDataValue(data, uid, 'extensions.vectorized_ai', false);
                 break;
-            case 'normal':
+            case world_info_entry_state.normal:
                 data.entries[uid].constant = false;
                 data.entries[uid].vectorized = false;
+                data.entries[uid].vectorizedAI = false;
                 setWIOriginalDataValue(data, uid, 'constant', false);
                 setWIOriginalDataValue(data, uid, 'extensions.vectorized', false);
+                setWIOriginalDataValue(data, uid, 'extensions.vectorized_ai', false);
                 break;
-            case 'vectorized':
+            case world_info_entry_state.vectorized:
                 data.entries[uid].constant = false;
                 data.entries[uid].vectorized = true;
+                data.entries[uid].vectorizedAI = false;
                 setWIOriginalDataValue(data, uid, 'constant', false);
                 setWIOriginalDataValue(data, uid, 'extensions.vectorized', true);
+                setWIOriginalDataValue(data, uid, 'extensions.vectorized_ai', false);
+                break;
+            case world_info_entry_state.vectorized_ai:
+                data.entries[uid].constant = false;
+                data.entries[uid].vectorized = false;
+                data.entries[uid].vectorizedAI = true;
+                setWIOriginalDataValue(data, uid, 'constant', false);
+                setWIOriginalDataValue(data, uid, 'extensions.vectorized', false);
+                setWIOriginalDataValue(data, uid, 'extensions.vectorized_ai', true);
                 break;
         }
         !noSave && await saveWorldInfo(name, data);
     });
-    const entryState = () => entry.constant === true ? 'constant' : entry.vectorized === true ? 'vectorized' : 'normal';
+    const entryState = () => entry.constant === true
+        ? world_info_entry_state.constant
+        : entry.vectorizedAI === true
+            ? world_info_entry_state.vectorized_ai
+            : entry.vectorized === true
+                ? world_info_entry_state.vectorized
+                : world_info_entry_state.normal;
     entryStateSelector.find(`option[value=${entryState()}]`).prop('selected', true).trigger('input', { noSave: true });
 }
 
@@ -4121,7 +4178,7 @@ export async function getWorldEntry(name, data, entry) {
         const aiSummaryInput = editTemplate.find('textarea[name="aiSummary"]');
         const generateSummaryButton = editTemplate.find('.world_entry_generate_ai_summary');
         const loreEntryState = getLoreEntryState(entry);
-        const supportsAISummary = loreEntryState === 'normal';
+        const supportsAISummary = [world_info_entry_state.normal, world_info_entry_state.vectorized_ai].includes(loreEntryState);
 
         if (!supportsAISummary) {
             aiSummaryBlock.hide();
@@ -4538,6 +4595,7 @@ export const newWorldInfoEntryDefinition = {
     content: { default: '', type: 'string' },
     constant: { default: false, type: 'boolean' },
     vectorized: { default: false, type: 'boolean' },
+    vectorizedAI: { default: false, type: 'boolean' },
     selective: { default: true, type: 'boolean' },
     selectiveLogic: { default: world_info_logic.AND_ANY, type: 'enum' },
     addMemo: { default: false, type: 'boolean' },
@@ -5165,17 +5223,19 @@ export async function checkWorldInfo(chat, maxContext, isDryRun, globalScanData 
     const sortedEntries = await getSortedEntries();
     clearWorldInfoAIFlags(sortedEntries);
     const timedEffects = new WorldInfoTimedEffects(chat, sortedEntries, isDryRun);
-    const constants = sortedEntries.filter(entry => getLoreEntryState(entry) === 'constant');
-    const aiEligibleEntries = sortedEntries.filter(entry => getLoreEntryState(entry) === 'normal' && !entry.disable);
+    const constants = sortedEntries.filter(entry => getLoreEntryState(entry) === world_info_entry_state.constant);
+    const aiEligibleEntries = sortedEntries.filter(entry => getLoreEntryState(entry) === world_info_entry_state.normal && !entry.disable);
+    const aiVectoredEntries = sortedEntries.filter(entry => getLoreEntryState(entry) === world_info_entry_state.vectorized_ai && !entry.disable);
     const aiModeEnabled = aiSettings.activationMode === world_info_activation_mode.ai_only || aiSettings.activationMode === world_info_activation_mode.two_stage;
     const aiOnlySelectedKeys = new Set();
-    let aiTrace = buildWorldInfoTrace({ mode: aiSettings.activationMode, constants, aiEligibleEntries });
+    let aiTrace = buildWorldInfoTrace({ mode: aiSettings.activationMode, constants, aiEligibleEntries: aiVectoredEntries });
 
-    if (!isDryRun && aiModeEnabled && aiSettings.activationMode === world_info_activation_mode.ai_only && aiEligibleEntries.length > 0) {
+    if (!isDryRun && aiModeEnabled && aiSettings.activationMode === world_info_activation_mode.ai_only && aiVectoredEntries.length > 0) {
         try {
-            const aiResults = await runAIWorldInfoSearch({ chat, normalEntries: aiEligibleEntries, maxOutputTokens: aiSettings.maxOutputTokens });
+            const vectoredCandidates = await getAIVectoredCandidates(chat, aiVectoredEntries);
+            const aiResults = await runAIWorldInfoSearch({ chat, normalEntries: vectoredCandidates, maxOutputTokens: aiSettings.maxOutputTokens });
             const matchedEntries = aiResults.map(result => {
-                const entry = aiEligibleEntries.find(candidate => candidate.uid === result.uid && candidate.world === result.world);
+                const entry = vectoredCandidates.find(candidate => candidate.uid === result.uid && candidate.world === result.world);
                 if (!entry) {
                     return null;
                 }
@@ -5189,7 +5249,7 @@ export async function checkWorldInfo(chat, maxContext, isDryRun, globalScanData 
             aiTrace = buildWorldInfoTrace({
                 mode: aiSettings.activationMode,
                 constants,
-                aiEligibleEntries,
+                aiEligibleEntries: vectoredCandidates,
                 aiSelectedEntries: matchedEntries,
             });
             showWorldInfoActivationToast(aiTrace);
@@ -5200,7 +5260,7 @@ export async function checkWorldInfo(chat, maxContext, isDryRun, globalScanData 
                 fallback: 'keyword',
                 error,
                 constants,
-                aiEligibleEntries,
+                aiEligibleEntries: aiVectoredEntries,
             });
             showWorldInfoActivationToast(aiTrace);
         }
@@ -5266,7 +5326,7 @@ export async function checkWorldInfo(chat, maxContext, isDryRun, globalScanData 
                     activatedNow.add(entry);
                     continue;
                 }
-                // Not selected by AI — skip entirely in ai_only mode
+                // Not selected by AI — skip entirely in ai_only mode.
                 continue;
             }
 
@@ -5374,6 +5434,12 @@ export async function checkWorldInfo(chat, maxContext, isDryRun, globalScanData 
                 continue;
             }
 
+            const loreEntryState = getLoreEntryState(entry);
+            if (loreEntryState === world_info_entry_state.vectorized_ai && aiSettings.activationMode === world_info_activation_mode.ai_only) {
+                log('waiting for AI-vectored selection in ai_only mode');
+                continue;
+            }
+
             if (!Array.isArray(entry.key) || !entry.key.length) {
                 log('has no keys defined, skipped');
                 continue;
@@ -5470,7 +5536,7 @@ export async function checkWorldInfo(chat, maxContext, isDryRun, globalScanData 
 
         if (!isDryRun && aiSettings.activationMode === world_info_activation_mode.two_stage && count === 1) {
             const constantEntries = [...activatedNow].filter(entry => entry.constant);
-            const keywordTriggeredEntries = [...activatedNow].filter(entry => !entry.constant && getLoreEntryState(entry) === 'normal');
+            const keywordTriggeredEntries = [...activatedNow].filter(entry => !entry.constant && [world_info_entry_state.normal, world_info_entry_state.vectorized_ai].includes(getLoreEntryState(entry)));
 
             try {
                 const aiResults = await runAIWorldInfoSearch({ chat, normalEntries: keywordTriggeredEntries, maxOutputTokens: aiSettings.maxOutputTokens });
@@ -6169,6 +6235,7 @@ export function convertCharacterBook(characterBook) {
             automationId: entry.extensions?.automation_id ?? '',
             role: entry.extensions?.role ?? extension_prompt_roles.SYSTEM,
             vectorized: entry.extensions?.vectorized ?? false,
+            vectorizedAI: entry.extensions?.vectorized_ai ?? false,
             sticky: entry.extensions?.sticky ?? null,
             cooldown: entry.extensions?.cooldown ?? null,
             delay: entry.extensions?.delay ?? null,
@@ -6916,7 +6983,7 @@ export function initWorldInfo() {
         const button = $(this);
         const allEligible = Object.values(data.entries)
             .map(rawEntry => ({ uid: rawEntry.uid, world: worldName, ...rawEntry }))
-            .filter(entry => getLoreEntryState(entry) === 'normal');
+            .filter(entry => [world_info_entry_state.normal, world_info_entry_state.vectorized_ai].includes(getLoreEntryState(entry)));
         const skipped = allEligible.filter(entry => getWorldInfoEntrySummary(entry, worldName));
         const entries = allEligible.filter(entry => !getWorldInfoEntrySummary(entry, worldName));
         let generatedCount = 0;

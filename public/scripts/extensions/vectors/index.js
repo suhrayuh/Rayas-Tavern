@@ -26,7 +26,7 @@ import { SECRET_KEYS, secret_state } from '../../secrets.js';
 import { getDataBankAttachments, getDataBankAttachmentsForSource, getFileAttachment } from '../../chats.js';
 import { debounce, getStringHash as calculateHash, waitUntilCondition, onlyUnique, splitRecursive, trimToStartSentence, trimToEndSentence, escapeHtml, isTrueBoolean } from '../../utils.js';
 import { debounce_timeout } from '../../constants.js';
-import { getSortedEntries } from '../../world-info.js';
+import { getSortedEntries, getWorldInfoEntrySummary } from '../../world-info.js';
 import { textgen_types, textgenerationwebui_settings } from '../../textgen-settings.js';
 import { SlashCommandParser } from '../../slash-commands/SlashCommandParser.js';
 import { SlashCommand } from '../../slash-commands/SlashCommand.js';
@@ -134,6 +134,8 @@ const settings = {
     enabled_world_info: false,
     enabled_for_all: false,
     max_entries: 5,
+    ai_vectored_score_threshold: 0.15,
+    ai_vectored_max_candidates: 20,
 };
 
 const moduleWorker = new ModuleWorkerWrapper(synchronizeChat);
@@ -253,6 +255,13 @@ function normalizeVectorSettings(target) {
     if (typeof target.filter_disp !== 'boolean') {
         target.filter_disp = true;
     }
+
+    target.ai_vectored_score_threshold = Number.isFinite(Number(target.ai_vectored_score_threshold))
+        ? Number(target.ai_vectored_score_threshold)
+        : settings.ai_vectored_score_threshold;
+    target.ai_vectored_max_candidates = Number.isFinite(Number(target.ai_vectored_max_candidates)) && Number(target.ai_vectored_max_candidates) > 0
+        ? Math.floor(Number(target.ai_vectored_max_candidates))
+        : settings.ai_vectored_max_candidates;
 }
 
 function migrateLegacyVectorSettings() {
@@ -1905,6 +1914,78 @@ async function activateWorldInfo(chat) {
     await eventSource.emit(event_types.WORLDINFO_FORCE_ACTIVATE, activatedEntries);
 }
 
+export async function recallVectorWorldInfoEntries(entries, chat, topK, threshold) {
+    if (!settings.enabled_world_info) {
+        throw new Error('Vector Storage is disabled for World Info');
+    }
+
+    if (!Array.isArray(entries) || entries.length === 0) {
+        return [];
+    }
+
+    const groupedEntries = {};
+
+    for (const entry of entries) {
+        if (!entry?.world || !entry?.content) {
+            continue;
+        }
+
+        // Use AI summary for embedding (short, semantic, fits any model's context window).
+        // Full content is still injected into the prompt when activated.
+        const summary = getWorldInfoEntrySummary(entry, entry.world);
+        if (!summary) {
+            console.warn(`[Vectors] AI (Vectored) entry "${entry.comment || entry.uid}" in "${entry.world}" has no AI summary — skipping vector embedding. Generate a summary first.`);
+            continue;
+        }
+
+        if (!Object.hasOwn(groupedEntries, entry.world)) {
+            groupedEntries[entry.world] = [];
+        }
+
+        groupedEntries[entry.world].push({ ...entry, _embeddingText: summary });
+    }
+
+    const collectionIds = [];
+
+    for (const world in groupedEntries) {
+        const collectionId = `world_ai_${getStringHash(world)}`;
+        const hashesInCollection = await getSavedHashes(collectionId);
+        // Hash the summary text for the collection (not content) so re-embedding happens if summary changes.
+        const newEntries = groupedEntries[world].filter(x => !hashesInCollection.includes(getStringHash(x._embeddingText)));
+        const allCurrentHashes = groupedEntries[world].map(x => getStringHash(x._embeddingText));
+        const deletedHashes = hashesInCollection.filter(x => !allCurrentHashes.includes(x));
+
+        if (newEntries.length > 0) {
+            await insertVectorItems(collectionId, newEntries.map(x => ({ hash: getStringHash(x._embeddingText), text: x._embeddingText, index: x.uid })));
+        }
+
+        if (deletedHashes.length > 0) {
+            await deleteVectorItems(collectionId, deletedHashes);
+        }
+
+        collectionIds.push(collectionId);
+    }
+
+    if (!collectionIds.length) {
+        return [];
+    }
+
+    const queryText = await getQueryText(chat, 'world-info');
+
+    if (!queryText.length) {
+        return [];
+    }
+
+    const queryResults = await queryMultipleCollections(collectionIds, queryText, topK, threshold);
+    const activatedHashes = Object.values(queryResults).flatMap(x => x.hashes).filter(onlyUnique);
+
+    // Match back by summary hash to original entries
+    return entries.filter(entry => {
+        const summary = getWorldInfoEntrySummary(entry, entry.world);
+        return summary && activatedHashes.includes(getStringHash(summary));
+    });
+}
+
 export async function init() {
     if (!extension_settings.vectors) {
         extension_settings.vectors = settings;
@@ -2219,6 +2300,18 @@ export async function init() {
 
     $('#vectors_max_entries').val(settings.max_entries).on('input', () => {
         settings.max_entries = Number($('#vectors_max_entries').val());
+        Object.assign(extension_settings.vectors, settings);
+        saveSettingsDebounced();
+    });
+
+    $('#vectors_ai_vectored_score_threshold').val(settings.ai_vectored_score_threshold).on('input', () => {
+        settings.ai_vectored_score_threshold = Number($('#vectors_ai_vectored_score_threshold').val());
+        Object.assign(extension_settings.vectors, settings);
+        saveSettingsDebounced();
+    });
+
+    $('#vectors_ai_vectored_max_candidates').val(settings.ai_vectored_max_candidates).on('input', () => {
+        settings.ai_vectored_max_candidates = Number($('#vectors_ai_vectored_max_candidates').val());
         Object.assign(extension_settings.vectors, settings);
         saveSettingsDebounced();
     });

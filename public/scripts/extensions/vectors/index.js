@@ -1970,9 +1970,12 @@ export async function recallVectorWorldInfoEntries(entries, chat, topK, threshol
         return [];
     }
 
-    const queryText = await getQueryText(chat, 'world-info');
+    const queryText = Array.isArray(chat)
+        ? chat.filter(x => typeof x === 'string' ? x.trim() : x?.mes?.trim()).slice(-settings.query).map(x => typeof x === 'string' ? x : x.mes).join('\n').trim()
+        : '';
 
     if (!queryText.length) {
+        console.warn('[Vectors] AI (Vectored) query text is empty — cannot query collections');
         return [];
     }
 

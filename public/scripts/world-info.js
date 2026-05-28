@@ -477,6 +477,7 @@ async function runAIWorldInfoSearch({ chat, normalEntries, maxOutputTokens }) {
 
     const entryPayload = normalEntries.map(entry => ({
         uid: entry.uid,
+        world: entry.world,
         title: entry.comment || entry.key?.[0] || `Entry ${entry.uid}`,
         summary: getWorldInfoEntrySummary(entry) || '',
     }));

@@ -923,7 +923,8 @@ input[type='checkbox']:focus-visible {
 
 small {
     color: var(--SmartThemeBodyColor);
-    opacity: 0.7;
+    opacity: 0.8;
+	font-size: 15px;
 }
 
 .mes.smallSysMes {

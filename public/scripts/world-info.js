@@ -3791,6 +3791,15 @@ function handleEntryStateSelectorHelper({ entryStateSelector, entry, data, name 
                 break;
         }
         !noSave && await saveWorldInfo(name, data);
+
+        // Toggle AI Summary visibility when entry state changes
+        const newState = $(this).val();
+        const aiSummaryBlock = $(this).closest('.world_entry').find('[name="aiSummaryBlock"]');
+        if (newState === world_info_entry_state.vectorized_ai) {
+            aiSummaryBlock.show();
+        } else {
+            aiSummaryBlock.hide();
+        }
     });
     const entryState = () => entry.constant === true
         ? world_info_entry_state.constant
@@ -4179,7 +4188,7 @@ export async function getWorldEntry(name, data, entry) {
         const aiSummaryInput = editTemplate.find('textarea[name="aiSummary"]');
         const generateSummaryButton = editTemplate.find('.world_entry_generate_ai_summary');
         const loreEntryState = getLoreEntryState(entry);
-        const supportsAISummary = [world_info_entry_state.normal, world_info_entry_state.vectorized_ai].includes(loreEntryState);
+        const supportsAISummary = loreEntryState === world_info_entry_state.vectorized_ai;
 
         if (!supportsAISummary) {
             aiSummaryBlock.hide();
@@ -6984,7 +6993,7 @@ export function initWorldInfo() {
         const button = $(this);
         const allEligible = Object.values(data.entries)
             .map(rawEntry => ({ uid: rawEntry.uid, world: worldName, ...rawEntry }))
-            .filter(entry => [world_info_entry_state.normal, world_info_entry_state.vectorized_ai].includes(getLoreEntryState(entry)));
+            .filter(entry => getLoreEntryState(entry) === world_info_entry_state.vectorized_ai);
         const skipped = allEligible.filter(entry => getWorldInfoEntrySummary(entry, worldName));
         const entries = allEligible.filter(entry => !getWorldInfoEntrySummary(entry, worldName));
         let generatedCount = 0;

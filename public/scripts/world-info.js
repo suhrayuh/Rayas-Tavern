@@ -5330,13 +5330,13 @@ export async function checkWorldInfo(chat, maxContext, isDryRun, globalScanData 
                 continue;
             }
 
-            if (!entry.constant && aiSettings.activationMode === world_info_activation_mode.ai_only && !aiTrace.error) {
+            if (getLoreEntryState(entry) === world_info_entry_state.vectorized_ai && aiSettings.activationMode === world_info_activation_mode.ai_only && !aiTrace.error) {
                 if (aiOnlySelectedKeys.has(`${entry.world}.${entry.uid}`)) {
-                    log('activated by AI search');
+                    log('activated by AI-vectored search');
                     activatedNow.add(entry);
                     continue;
                 }
-                // Not selected by AI — skip entirely in ai_only mode.
+                // Not selected by AI-vectored search — skip keyword matching for this entry.
                 continue;
             }
 

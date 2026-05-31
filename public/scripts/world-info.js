@@ -5546,41 +5546,48 @@ export async function checkWorldInfo(chat, maxContext, isDryRun, globalScanData 
 
         if (!isDryRun && aiSettings.activationMode === world_info_activation_mode.two_stage && count === 1) {
             const constantEntries = [...activatedNow].filter(entry => entry.constant);
-            const keywordTriggeredEntries = [...activatedNow].filter(entry => !entry.constant && [world_info_entry_state.normal, world_info_entry_state.vectorized_ai].includes(getLoreEntryState(entry)));
+            const normalKeywordEntries = [...activatedNow].filter(entry => !entry.constant && getLoreEntryState(entry) === world_info_entry_state.normal);
+            const vectoredAIKeywordEntries = [...activatedNow].filter(entry => !entry.constant && getLoreEntryState(entry) === world_info_entry_state.vectorized_ai);
 
-            try {
-                const aiResults = await runAIWorldInfoSearch({ chat, normalEntries: keywordTriggeredEntries, maxOutputTokens: aiSettings.maxOutputTokens });
-                const matchedEntries = aiResults.map(result => {
-                    const entry = keywordTriggeredEntries.find(candidate => candidate.uid === result.uid && candidate.world === result.world);
-                    if (!entry) {
-                        return null;
-                    }
+            // Normal entries pass through keyword matching only — not gated by AI.
+            // Only AI (Vectored) entries that were keyword-triggered go through the AI filter.
+            if (vectoredAIKeywordEntries.length > 0) {
+                try {
+                    const aiResults = await runAIWorldInfoSearch({ chat, normalEntries: vectoredAIKeywordEntries, maxOutputTokens: aiSettings.maxOutputTokens });
+                    const matchedEntries = aiResults.map(result => {
+                        const entry = vectoredAIKeywordEntries.find(candidate => candidate.uid === result.uid && candidate.world === result.world);
+                        if (!entry) {
+                            return null;
+                        }
 
-                    entry.aiReason = result.reason;
-                    entry.aiConfidence = result.confidence;
-                    return entry;
-                }).filter(Boolean);
+                        entry.aiReason = result.reason;
+                        entry.aiConfidence = result.confidence;
+                        return entry;
+                    }).filter(Boolean);
 
-                activatedNow = new Set([...constantEntries, ...matchedEntries]);
-                aiTrace = buildWorldInfoTrace({
-                    mode: aiSettings.activationMode,
-                    constants,
-                    aiEligibleEntries: keywordTriggeredEntries,
-                    aiSelectedEntries: matchedEntries,
-                });
-                showWorldInfoActivationToast(aiTrace);
-            } catch (error) {
-                console.error('[WI] Two-stage AI search failed, using keyword fallback', error);
-                activatedNow = new Set([...constantEntries, ...keywordTriggeredEntries]);
-                aiTrace = buildWorldInfoTrace({
-                    mode: aiSettings.activationMode,
-                    fallback: 'keyword',
-                    error,
-                    constants,
-                    aiEligibleEntries: keywordTriggeredEntries,
-                    keywordFallbackEntries: keywordTriggeredEntries,
-                });
-                showWorldInfoActivationToast(aiTrace);
+                    activatedNow = new Set([...constantEntries, ...normalKeywordEntries, ...matchedEntries]);
+                    aiTrace = buildWorldInfoTrace({
+                        mode: aiSettings.activationMode,
+                        constants,
+                        aiEligibleEntries: vectoredAIKeywordEntries,
+                        aiSelectedEntries: matchedEntries,
+                    });
+                    showWorldInfoActivationToast(aiTrace);
+                } catch (error) {
+                    console.error('[WI] Two-stage AI search failed, using keyword fallback', error);
+                    activatedNow = new Set([...constantEntries, ...normalKeywordEntries, ...vectoredAIKeywordEntries]);
+                    aiTrace = buildWorldInfoTrace({
+                        mode: aiSettings.activationMode,
+                        fallback: 'keyword',
+                        error,
+                        constants,
+                        aiEligibleEntries: vectoredAIKeywordEntries,
+                        keywordFallbackEntries: vectoredAIKeywordEntries,
+                    });
+                    showWorldInfoActivationToast(aiTrace);
+                }
+            } else {
+                activatedNow = new Set([...constantEntries, ...normalKeywordEntries]);
             }
         }
 

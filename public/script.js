@@ -1759,10 +1759,12 @@ function prepareRayaInfoBoardContent(rawContent) {
     html = html.replace(/(✿\s*[^✿]+?\s*✿[\s\S]*?)(?=✿|$)/gi, '<div class="section-block">$1</div>');
     html = html.replace(/(Time\s*\/\s*Date\s*:)/gi, '<span class="pink-title">$1</span>');
     html = html.replace(/(Location\s*\/\s*Position\s*:)/gi, '<span class="pink-title">$1</span>');
+    html = html.replace(/(Location\s*:)/gi, '<span class="pink-title">$1</span>');
     html = html.replace(/(Thought\s*:)/gi, '<span class="pink-title">$1</span>');
     html = html.replace(/([^\s\w<]*\s*Affinity\s*:)/gi, '<span class="affinity-glow">$1</span>');
     html = html.replace(/([^\s\w<]*\s*Arousal\s*:)/gi, '<span class="arousal-glow">$1</span>');
     html = html.replace(/(Goal\s*:)/gi, '<span class="pink-title">$1</span>');
+    html = html.replace(/(Situation\s*:)/gi, '<span class="pink-title">$1</span>');
     html = html.replace(/(<span class="pink-title">Thought\s*:<\/span>)([\s\S]*?)(?=<span class="pink-title">Goal|$)/gi, '$1<span class="thought-text">$2</span>');
     html = html.replace(/(✿\s*[^✿]+?\s*✿)/g, '<span class="name-glow">$1</span>');
     html = html.replace(/(▰+)/g, '<span style="color:#F14DA6;">$1</span>');

@@ -24,6 +24,7 @@ import { getSortableDelay } from './utils.js';
 
 const MODULE_NAME = 'rayasAgents';
 const PRE_AGENT_PROMPT_KEY = 'rayas_agents_pre';
+const POST_AGENTS_FINISHED_EVENT = 'rayas_agents_post_finished';
 const DEFAULT_AGENT_MAX_TOKENS = 512;
 const DEFAULT_AGENT_PRIORITY = 100;
 const MIN_AGENT_MAX_TOKENS = 16;
@@ -685,6 +686,27 @@ function dispatchFinalAssistantMessageEvent(messageId) {
     }));
 }
 
+async function emitPostAgentsFinished(messageId, generationType, source, changed) {
+    const detail = {
+        messageId: Number(messageId),
+        generationType: String(generationType ?? 'normal'),
+        source: String(source ?? 'post'),
+        changed: Boolean(changed),
+    };
+
+    try {
+        await eventSource.emit(POST_AGENTS_FINISHED_EVENT, detail);
+    } catch (error) {
+        console.warn('[Agents] Failed to emit post-agents-finished event', error);
+    }
+
+    try {
+        document.dispatchEvent(new CustomEvent(POST_AGENTS_FINISHED_EVENT, { detail }));
+    } catch (error) {
+        console.warn('[Agents] Failed to dispatch DOM post-agents-finished event', error);
+    }
+}
+
 async function runPostAgentsForMessage(messageId, generationType = 'normal', source = 'post', options = {}) {
     const updateDom = options.updateDom !== false;
     const emitLateEvents = options.emitLateEvents !== false;
@@ -766,6 +788,8 @@ async function runPostAgentsForMessage(messageId, generationType = 'normal', sou
                 dispatchFinalAssistantMessageEvent(messageId);
             }
         }
+
+        await emitPostAgentsFinished(messageId, generationType, source, messageChanged);
 
         if (shouldToastProgress) {
             toastr[messageChanged ? 'success' : 'info'](
@@ -1211,3 +1235,5 @@ export function initAgents() {
     eventSource.on(event_types.GENERATION_ENDED, onGenerationFinished);
     eventSource.on(event_types.GENERATION_STOPPED, onGenerationStopped);
 }
+
+export { POST_AGENTS_FINISHED_EVENT };

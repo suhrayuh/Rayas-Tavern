@@ -24,6 +24,7 @@ import { MacrosParser } from './macros.js';
 import { power_user } from './power-user.js';
 
 const MODULE_NAME = '2_floating_prompt'; // <= Deliberate, for sorting lower than memory
+const delayedSettingsSave = debounce(() => saveSettingsDebounced(), 2500);
 
 export var shouldWIAddPrompt = false;
 
@@ -124,7 +125,7 @@ function setNoteRoleCommand(_, text) {
 }
 
 function updateSettings() {
-    saveSettingsDebounced();
+    delayedSettingsSave();
     loadSettings();
     setFloatingPrompt();
 }
@@ -167,7 +168,7 @@ async function onExtensionFloatingPositionInput(e) {
 
 async function onDefaultPositionInput(e) {
     extension_settings.note.defaultPosition = Number(e.target.value);
-    saveSettingsDebounced();
+    delayedSettingsSave();
 }
 
 async function onDefaultDepthInput() {
@@ -179,12 +180,12 @@ async function onDefaultDepthInput() {
     }
 
     extension_settings.note.defaultDepth = value;
-    saveSettingsDebounced();
+    delayedSettingsSave();
 }
 
 async function onDefaultIntervalInput() {
     extension_settings.note.defaultInterval = Number($(this).val());
-    saveSettingsDebounced();
+    delayedSettingsSave();
 }
 
 function onExtensionFloatingRoleInput(e) {
@@ -194,7 +195,7 @@ function onExtensionFloatingRoleInput(e) {
 
 function onExtensionDefaultRoleInput(e) {
     extension_settings.note.defaultRole = Number(e.target.value);
-    saveSettingsDebounced();
+    delayedSettingsSave();
 }
 
 async function onExtensionFloatingCharPositionInput(e) {

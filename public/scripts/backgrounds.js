@@ -34,6 +34,7 @@ const THUMBNAIL_COLUMNS_MIN = 2;
 const THUMBNAIL_COLUMNS_MAX = 8;
 const THUMBNAIL_COLUMNS_DEFAULT_DESKTOP = 5;
 const THUMBNAIL_COLUMNS_DEFAULT_MOBILE = 3;
+const delayedSettingsSave = debounce(() => saveSettingsDebounced(), 2500);
 
 /**
  * Storage for frontend-generated background thumbnails.
@@ -1801,7 +1802,7 @@ export function initBackgrounds() {
     $('#bg-filter').on('input', () => debouncedOnBackgroundFilterInput());
     $('#bg-sort').on('change', function () {
         background_settings.sortOrder = String($(this).val());
-        saveSettingsDebounced();
+        delayedSettingsSave();
         // Re-render both galleries with new sort order (respecting active folder filter)
         renderSystemBackgrounds(getFilteredImages());
         renderChatBackgrounds();
@@ -1838,12 +1839,12 @@ export function initBackgrounds() {
     $('#background_fitting').on('input', function () {
         background_settings.fitting = String($(this).val());
         setFittingClass(background_settings.fitting);
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
 
     $('#background_thumbnails_animation').on('input', async function () {
         background_settings.animation = !!$(this).prop('checked');
-        saveSettingsDebounced();
+        delayedSettingsSave();
 
         // Refresh background thumbnails
         await getBackgrounds();

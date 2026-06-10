@@ -206,8 +206,16 @@ export const router = express.Router();
 router.post('/save', function (request, response) {
     try {
         const pathToSettings = path.join(request.user.directories.root, SETTINGS_FILE);
-        writeFileAtomicSync(pathToSettings, JSON.stringify(request.body, null, 4), 'utf8');
-        triggerAutoSave(request.user.profile.handle);
+        const serializedSettings = JSON.stringify(request.body, null, 4);
+        const currentSettings = fs.existsSync(pathToSettings)
+            ? fs.readFileSync(pathToSettings, 'utf8')
+            : null;
+
+        if (currentSettings !== serializedSettings) {
+            writeFileAtomicSync(pathToSettings, serializedSettings, 'utf8');
+            triggerAutoSave(request.user.profile.handle);
+        }
+
         response.send({ result: 'ok' });
     } catch (err) {
         console.error(err);

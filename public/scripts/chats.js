@@ -2302,7 +2302,7 @@ export function initChatUtilities() {
     $(document).on('input', '#forbid_media_override_allowed', function () {
         const entityId = getCurrentEntityId();
         if (!entityId) return;
-        power_user.external_media_allowed_overrides.push(entityId);
+        power_user.external_media_allowed_overrides = Array.from(new Set([...power_user.external_media_allowed_overrides, entityId]));
         power_user.external_media_forbidden_overrides = power_user.external_media_forbidden_overrides.filter((v) => v !== entityId);
         saveSettingsDebounced();
         reloadCurrentChat();
@@ -2310,7 +2310,7 @@ export function initChatUtilities() {
     $(document).on('input', '#forbid_media_override_forbidden', function () {
         const entityId = getCurrentEntityId();
         if (!entityId) return;
-        power_user.external_media_forbidden_overrides.push(entityId);
+        power_user.external_media_forbidden_overrides = Array.from(new Set([...power_user.external_media_forbidden_overrides, entityId]));
         power_user.external_media_allowed_overrides = power_user.external_media_allowed_overrides.filter((v) => v !== entityId);
         saveSettingsDebounced();
         reloadCurrentChat();

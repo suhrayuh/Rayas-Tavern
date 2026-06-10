@@ -1,5 +1,3 @@
-import { saveSettingsDebounced } from '../../script.js';
-
 const MIGRATED_MARKER = '__migrated';
 const MIGRATABLE_KEYS = [
     /^AlertRegex_/,
@@ -48,18 +46,35 @@ class AccountStorage {
      */
     #ready = false;
 
-    #migrateLocalStorage() {
+    #persistKey(key) {
+        const value = this.#state[key];
+
+        if (value === undefined) {
+            globalThis.localStorage.removeItem(key);
+            return;
+        }
+
+        globalThis.localStorage.setItem(key, String(value));
+    }
+
+    #hydrateLocalState() {
         const localStorageKeys = [];
         for (let i = 0; i < globalThis.localStorage.length; i++) {
             localStorageKeys.push(globalThis.localStorage.key(i));
         }
+
         for (const key of localStorageKeys) {
-            if (MIGRATABLE_KEYS.some(k => k.test(key))) {
+            if (key === MIGRATED_MARKER || MIGRATABLE_KEYS.some(k => k.test(key))) {
                 const value = globalThis.localStorage.getItem(key);
-                this.#state[key] = value;
-                globalThis.localStorage.removeItem(key);
+                if (value !== null) {
+                    this.#state[key] = value;
+                }
             }
         }
+    }
+
+    #migrateLocalStorage() {
+        this.#hydrateLocalState();
     }
 
     /**
@@ -71,10 +86,12 @@ class AccountStorage {
             this.#state = Object.assign(this.#state, state);
         }
 
+        this.#hydrateLocalState();
+
         if (!Object.hasOwn(this.#state, MIGRATED_MARKER)) {
             this.#migrateLocalStorage();
             this.#state[MIGRATED_MARKER] = '1';
-            saveSettingsDebounced();
+            this.#persistKey(MIGRATED_MARKER);
         }
 
         this.#ready = true;
@@ -110,7 +127,7 @@ class AccountStorage {
         }
 
         this.#state[key] = String(value);
-        saveSettingsDebounced();
+        this.#persistKey(key);
     }
 
     /**
@@ -127,7 +144,7 @@ class AccountStorage {
         }
 
         delete this.#state[key];
-        saveSettingsDebounced();
+        this.#persistKey(key);
     }
 
     /**

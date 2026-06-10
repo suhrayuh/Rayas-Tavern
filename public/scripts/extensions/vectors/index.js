@@ -138,6 +138,8 @@ const settings = {
     ai_vectored_max_candidates: 20,
 };
 
+const delayedSettingsSave = debounce(() => saveSettingsDebounced(), 2500);
+
 const moduleWorker = new ModuleWorkerWrapper(synchronizeChat);
 const webllmProvider = new WebLlmVectorProvider();
 /**
@@ -2058,19 +2060,19 @@ export async function init() {
         settings.openai_custom.url = String($('#vectors_openai_custom_url').val()).trim();
         settings.openai_custom.enabled = !!settings.openai_custom.url;
         Object.assign(extension_settings.vectors, settings);
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
     $('#vectors_openai_custom_model').val(settings.openai_custom.model).on('input', () => {
         settings.openai_custom.model = String($('#vectors_openai_custom_model').val()).trim();
         settings.openai_custom.enabled = !!settings.openai_custom.url;
         Object.assign(extension_settings.vectors, settings);
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
     $('#vectors_openai_custom_api_key').val(settings.openai_custom.apiKey).on('input', () => {
         settings.openai_custom.apiKey = String($('#vectors_openai_custom_api_key').val());
         settings.openai_custom.enabled = !!settings.openai_custom.url;
         Object.assign(extension_settings.vectors, settings);
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
     $('#vectors_electronhub_model').val(settings.electronhub_model).on('change', () => {
         settings.electronhub_model = String($('#vectors_electronhub_model').val());
@@ -2110,12 +2112,12 @@ export async function init() {
     $('#vectors_ollama_model').val(settings.ollama_model).on('input', () => {
         settings.ollama_model = String($('#vectors_ollama_model').val());
         Object.assign(extension_settings.vectors, settings);
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
     $('#vectors_vllm_model').val(settings.vllm_model).on('input', () => {
         settings.vllm_model = String($('#vectors_vllm_model').val());
         Object.assign(extension_settings.vectors, settings);
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
     $('#vectors_ollama_keep').prop('checked', settings.ollama_keep).on('input', () => {
         settings.ollama_keep = $('#vectors_ollama_keep').prop('checked');
@@ -2125,27 +2127,27 @@ export async function init() {
     $('#vectors_template').val(settings.template).on('input', () => {
         settings.template = String($('#vectors_template').val());
         Object.assign(extension_settings.vectors, settings);
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
     $('#vectors_depth').val(settings.depth).on('input', () => {
         settings.depth = Number($('#vectors_depth').val());
         Object.assign(extension_settings.vectors, settings);
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
     $('#vectors_protect').val(settings.protect).on('input', () => {
         settings.protect = Number($('#vectors_protect').val());
         Object.assign(extension_settings.vectors, settings);
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
     $('#vectors_insert').val(settings.insert).on('input', () => {
         settings.insert = Number($('#vectors_insert').val());
         Object.assign(extension_settings.vectors, settings);
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
     $('#vectors_query').val(settings.query).on('input', () => {
         settings.query = Number($('#vectors_query').val());
         Object.assign(extension_settings.vectors, settings);
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
     $(`input[name="vectors_position"][value="${settings.position}"]`).prop('checked', true);
     $('input[name="vectors_position"]').on('change', () => {
@@ -2162,19 +2164,19 @@ export async function init() {
     $('#vectors_size_threshold').val(settings.size_threshold).on('input', () => {
         settings.size_threshold = Number($('#vectors_size_threshold').val());
         Object.assign(extension_settings.vectors, settings);
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
 
     $('#vectors_chunk_size').val(settings.chunk_size).on('input', () => {
         settings.chunk_size = Number($('#vectors_chunk_size').val());
         Object.assign(extension_settings.vectors, settings);
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
 
     $('#vectors_chunk_count').val(settings.chunk_count).on('input', () => {
         settings.chunk_count = Number($('#vectors_chunk_count').val());
         Object.assign(extension_settings.vectors, settings);
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
 
     $('#vectors_include_wi').prop('checked', settings.include_wi).on('input', () => {
@@ -2204,63 +2206,63 @@ export async function init() {
     $('#vectors_summary_prompt').val(settings.summary_prompt).on('input', () => {
         settings.summary_prompt = String($('#vectors_summary_prompt').val());
         Object.assign(extension_settings.vectors, settings);
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
 
     $('#vectors_summary_retries').val(settings.summary_retries).on('input', () => {
         const parsed = Number($('#vectors_summary_retries').val());
         settings.summary_retries = Number.isFinite(parsed) && parsed >= 1 ? Math.floor(parsed) : 1;
         Object.assign(extension_settings.vectors, settings);
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
 
     $('#vectors_summary_threshold').val(settings.summary_threshold).on('input', () => {
         const parsed = Number($('#vectors_summary_threshold').val());
         settings.summary_threshold = Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : 0;
         Object.assign(extension_settings.vectors, settings);
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
 
     $('#vectors_message_chunk_size').val(settings.message_chunk_size).on('input', () => {
         settings.message_chunk_size = Number($('#vectors_message_chunk_size').val());
         Object.assign(extension_settings.vectors, settings);
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
 
     $('#vectors_size_threshold_db').val(settings.size_threshold_db).on('input', () => {
         settings.size_threshold_db = Number($('#vectors_size_threshold_db').val());
         Object.assign(extension_settings.vectors, settings);
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
 
     $('#vectors_chunk_size_db').val(settings.chunk_size_db).on('input', () => {
         settings.chunk_size_db = Number($('#vectors_chunk_size_db').val());
         Object.assign(extension_settings.vectors, settings);
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
 
     $('#vectors_chunk_count_db').val(settings.chunk_count_db).on('input', () => {
         settings.chunk_count_db = Number($('#vectors_chunk_count_db').val());
         Object.assign(extension_settings.vectors, settings);
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
 
     $('#vectors_overlap_percent').val(settings.overlap_percent).on('input', () => {
         settings.overlap_percent = Number($('#vectors_overlap_percent').val());
         Object.assign(extension_settings.vectors, settings);
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
 
     $('#vectors_overlap_percent_db').val(settings.overlap_percent_db).on('input', () => {
         settings.overlap_percent_db = Number($('#vectors_overlap_percent_db').val());
         Object.assign(extension_settings.vectors, settings);
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
 
     $('#vectors_file_template_db').val(settings.file_template_db).on('input', () => {
         settings.file_template_db = String($('#vectors_file_template_db').val());
         Object.assign(extension_settings.vectors, settings);
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
 
     $(`input[name="vectors_file_position_db"][value="${settings.file_position_db}"]`).prop('checked', true);
@@ -2273,13 +2275,13 @@ export async function init() {
     $('#vectors_file_depth_db').val(settings.file_depth_db).on('input', () => {
         settings.file_depth_db = Number($('#vectors_file_depth_db').val());
         Object.assign(extension_settings.vectors, settings);
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
 
     $('#vectors_file_depth_role_db').val(settings.file_depth_role_db).on('input', () => {
         settings.file_depth_role_db = Number($('#vectors_file_depth_role_db').val());
         Object.assign(extension_settings.vectors, settings);
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
 
     $('#vectors_translate_files').prop('checked', settings.translate_files).on('input', () => {
@@ -2304,25 +2306,25 @@ export async function init() {
     $('#vectors_max_entries').val(settings.max_entries).on('input', () => {
         settings.max_entries = Number($('#vectors_max_entries').val());
         Object.assign(extension_settings.vectors, settings);
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
 
     $('#vectors_ai_vectored_score_threshold').val(settings.ai_vectored_score_threshold).on('input', () => {
         settings.ai_vectored_score_threshold = Number($('#vectors_ai_vectored_score_threshold').val());
         Object.assign(extension_settings.vectors, settings);
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
 
     $('#vectors_ai_vectored_max_candidates').val(settings.ai_vectored_max_candidates).on('input', () => {
         settings.ai_vectored_max_candidates = Number($('#vectors_ai_vectored_max_candidates').val());
         Object.assign(extension_settings.vectors, settings);
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
 
     $('#vectors_score_threshold').val(settings.score_threshold).on('input', () => {
         settings.score_threshold = Number($('#vectors_score_threshold').val());
         Object.assign(extension_settings.vectors, settings);
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
     $('#vectors_filter_disp').prop('checked', settings.filter_disp).on('input', () => {
         settings.filter_disp = !!$('#vectors_filter_disp').prop('checked');
@@ -2344,23 +2346,23 @@ export async function init() {
     $('#vectors_rerank_model').on('input', () => {
         getActiveRerankProviderSettings().model = String($('#vectors_rerank_model').val()).trim();
         Object.assign(extension_settings.vectors, settings);
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
     $('#vectors_rerank_endpoint').on('input', () => {
         getActiveRerankProviderSettings().endpoint = String($('#vectors_rerank_endpoint').val()).trim();
         Object.assign(extension_settings.vectors, settings);
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
     $('#vectors_rerank_api_key').on('input', () => {
         getActiveRerankProviderSettings().apiKey = String($('#vectors_rerank_api_key').val());
         Object.assign(extension_settings.vectors, settings);
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
     $('#vectors_rerank_topk').on('input', () => {
         const parsed = Number($('#vectors_rerank_topk').val());
         getActiveRerankProviderSettings().topK = Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 10;
         Object.assign(extension_settings.vectors, settings);
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
     $('#vectors_rerank_test').on('click', async () => {
         const $status = $('#vectors_rerank_status small');
@@ -2392,7 +2394,7 @@ export async function init() {
     $('#vectors_force_chunk_delimiter').val(settings.force_chunk_delimiter).on('input', () => {
         settings.force_chunk_delimiter = String($('#vectors_force_chunk_delimiter').val());
         Object.assign(extension_settings.vectors, settings);
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
 
     $('#vectors_only_custom_boundary').prop('checked', settings.only_custom_boundary).on('input', () => {
@@ -2423,7 +2425,7 @@ export async function init() {
     $('#vectors_webllm_model').on('input', () => {
         settings.webllm_model = String($('#vectors_webllm_model').val());
         Object.assign(extension_settings.vectors, settings);
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
 
     $('#vectors_webllm_load').on('click', async () => {

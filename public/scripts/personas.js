@@ -98,6 +98,7 @@ export const persona_description_positions = {
 };
 
 const USER_AVATAR_PATH = 'User Avatars/';
+const delayedSettingsSave = debounce(() => saveSettingsDebounced(), 2500);
 
 let savePersonasPage = 0;
 const GRID_STORAGE_KEY = 'Personas_GridView';
@@ -1228,7 +1229,7 @@ async function onPersonaDescriptionInput() {
     $(`.avatar-container[data-avatar-id="${user_avatar}"] .ch_description`)
         .text(power_user.persona_description || $('#user_avatar_block').attr('no_desc_text'))
         .toggleClass('text_muted', !power_user.persona_description);
-    saveSettingsDebounced();
+    delayedSettingsSave();
 
     if (power_user.personas[user_avatar]) {
         await eventSource.emit(event_types.PERSONA_UPDATED, user_avatar);
@@ -1241,12 +1242,12 @@ async function onPersonaDescriptionDepthValueInput() {
     if (power_user.personas[user_avatar]) {
         const object = getOrCreatePersonaDescriptor();
         object.depth = power_user.persona_description_depth;
-        saveSettingsDebounced();
+        delayedSettingsSave();
         await eventSource.emit(event_types.PERSONA_UPDATED, user_avatar);
         return;
     }
 
-    saveSettingsDebounced();
+    delayedSettingsSave();
 }
 
 async function onPersonaDescriptionDepthRoleInput() {
@@ -1255,12 +1256,12 @@ async function onPersonaDescriptionDepthRoleInput() {
     if (power_user.personas[user_avatar]) {
         const object = getOrCreatePersonaDescriptor();
         object.role = power_user.persona_description_role;
-        saveSettingsDebounced();
+        delayedSettingsSave();
         await eventSource.emit(event_types.PERSONA_UPDATED, user_avatar);
         return;
     }
 
-    saveSettingsDebounced();
+    delayedSettingsSave();
 }
 
 /**
@@ -1303,7 +1304,7 @@ async function onPersonaLoreButtonClick({ shiftKey, altKey }) {
         }
 
         $('#persona_lore_button').toggleClass('world_set', !!power_user.persona_description_lorebook);
-        saveSettingsDebounced();
+        delayedSettingsSave();
 
         if (power_user.personas[user_avatar]) {
             await eventSource.emit(event_types.PERSONA_UPDATED, user_avatar);
@@ -1321,13 +1322,13 @@ async function onPersonaDescriptionPositionInput() {
     if (power_user.personas[user_avatar]) {
         const object = getOrCreatePersonaDescriptor();
         object.position = power_user.persona_description_position;
-        saveSettingsDebounced();
+        delayedSettingsSave();
         await eventSource.emit(event_types.PERSONA_UPDATED, user_avatar);
         $('#persona_depth_position_settings').toggle(power_user.persona_description_position === persona_description_positions.AT_DEPTH);
         return;
     }
 
-    saveSettingsDebounced();
+    delayedSettingsSave();
     $('#persona_depth_position_settings').toggle(power_user.persona_description_position === persona_description_positions.AT_DEPTH);
 }
 
@@ -1569,7 +1570,7 @@ async function loadPersonaForCurrentChat({ doRender = false } = {}) {
         if (!userAvatars.includes(chatPersona)) {
             console.warn('Chat-locked persona avatar not found, unlocking persona');
             delete chat_metadata.persona;
-            saveSettingsDebounced();
+            saveMetadataDebounced();
             chatPersona = '';
         }
         if (chatPersona) connectType = 'chat';
@@ -1634,13 +1635,14 @@ async function loadPersonaForCurrentChat({ doRender = false } = {}) {
     if (chat_metadata.persona && !userAvatars.includes(chat_metadata.persona)) {
         console.warn('Persona avatar not found, unlocking persona');
         delete chat_metadata.persona;
+        saveMetadataDebounced();
     }
 
     // Default persona missing
     if (power_user.default_persona && !userAvatars.includes(power_user.default_persona)) {
         console.warn('Default persona avatar not found, clearing default persona');
         power_user.default_persona = null;
-        saveSettingsDebounced();
+        delayedSettingsSave();
     }
 
     // Persona avatar found, select it

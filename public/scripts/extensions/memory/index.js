@@ -34,6 +34,7 @@ import { MacrosParser } from '/scripts/macros.js';
 export { MODULE_NAME };
 
 const MODULE_NAME = '1_memory';
+const delayedSettingsSave = debounce(() => saveSettingsDebounced(), 2500);
 
 let lastMessageHash = null;
 let lastMessageId = null;
@@ -273,14 +274,14 @@ function onMemoryPromptWordsInput() {
     const value = $(this).val();
     extension_settings.memory.promptWords = Number(value);
     $('#memory_prompt_words_value').text(extension_settings.memory.promptWords);
-    saveSettingsDebounced();
+    delayedSettingsSave();
 }
 
 function onMemoryPromptIntervalInput() {
     const value = $(this).val();
     extension_settings.memory.promptInterval = Number(value);
     $('#memory_prompt_interval_value').text(extension_settings.memory.promptInterval);
-    saveSettingsDebounced();
+    delayedSettingsSave();
 }
 
 function onMemoryPromptRestoreClick() {
@@ -290,28 +291,28 @@ function onMemoryPromptRestoreClick() {
 function onMemoryPromptInput() {
     const value = $(this).val();
     extension_settings.memory.prompt = value;
-    saveSettingsDebounced();
+    delayedSettingsSave();
 }
 
 function onMemoryTemplateInput() {
     const value = $(this).val();
     extension_settings.memory.template = value;
     reinsertMemory();
-    saveSettingsDebounced();
+    delayedSettingsSave();
 }
 
 function onMemoryDepthInput() {
     const value = $(this).val();
     extension_settings.memory.depth = Number(value);
     reinsertMemory();
-    saveSettingsDebounced();
+    delayedSettingsSave();
 }
 
 function onMemoryRoleInput() {
     const value = $(this).val();
     extension_settings.memory.role = Number(value);
     reinsertMemory();
-    saveSettingsDebounced();
+    delayedSettingsSave();
 }
 
 function onMemoryPositionChange(e) {
@@ -332,21 +333,21 @@ function onMemoryPromptWordsForceInput() {
     const value = $(this).val();
     extension_settings.memory.promptForceWords = Number(value);
     $('#memory_prompt_words_force_value').text(extension_settings.memory.promptForceWords);
-    saveSettingsDebounced();
+    delayedSettingsSave();
 }
 
 function onOverrideResponseLengthInput() {
     const value = $(this).val();
     extension_settings.memory.overrideResponseLength = Number(value);
     $('#memory_override_response_length_value').text(extension_settings.memory.overrideResponseLength);
-    saveSettingsDebounced();
+    delayedSettingsSave();
 }
 
 function onMaxMessagesPerRequestInput() {
     const value = $(this).val();
     extension_settings.memory.maxMessagesPerRequest = Number(value);
     $('#memory_max_messages_per_request_value').text(extension_settings.memory.maxMessagesPerRequest);
-    saveSettingsDebounced();
+    delayedSettingsSave();
 }
 
 /**

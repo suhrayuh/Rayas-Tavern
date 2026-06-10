@@ -67,6 +67,7 @@ import { ActionLoaderHandle, loader } from '/scripts/action-loader.js';
 export { MODULE_NAME };
 
 const MODULE_NAME = 'sd';
+const delayedSettingsSave = debounce(() => saveSettingsDebounced(), 2500);
 // This is a 1x1 transparent PNG
 const PNG_PIXEL = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
 
@@ -629,7 +630,7 @@ function addPromptTemplates() {
             .attr('rows', 3)
             .val(prompt).on('input', () => {
                 extension_settings.sd.prompts[name] = textarea.val();
-                saveSettingsDebounced();
+                delayedSettingsSave();
             });
         const button = $('<button></button>')
             .addClass('menu_button fa-solid fa-undo')
@@ -916,7 +917,7 @@ async function adjustElementScrollHeight() {
 async function onCharacterPromptInput() {
     const key = getCharaFilename(this_chid);
     extension_settings.sd.character_prompts[key] = $('#sd_character_prompt').val();
-    saveSettingsDebounced();
+    delayedSettingsSave();
     writePromptFieldsDebounced(this_chid);
     if (CSS.supports('field-sizing', 'content')) return;
     await resetScrollHeight($(this));
@@ -925,7 +926,7 @@ async function onCharacterPromptInput() {
 async function onCharacterNegativePromptInput() {
     const key = getCharaFilename(this_chid);
     extension_settings.sd.character_negative_prompts[key] = $('#sd_character_negative_prompt').val();
-    saveSettingsDebounced();
+    delayedSettingsSave();
     writePromptFieldsDebounced(this_chid);
     if (CSS.supports('field-sizing', 'content')) return;
     await resetScrollHeight($(this));
@@ -1015,36 +1016,36 @@ function onToolVisibleInput() {
 function onClipSkipInput() {
     extension_settings.sd.clip_skip = Number($('#sd_clip_skip').val());
     $('#sd_clip_skip_value').val(extension_settings.sd.clip_skip);
-    saveSettingsDebounced();
+    delayedSettingsSave();
 }
 
 function onSeedInput() {
     extension_settings.sd.seed = Number($('#sd_seed').val());
-    saveSettingsDebounced();
+    delayedSettingsSave();
 }
 
 function onScaleInput() {
     extension_settings.sd.scale = Number($('#sd_scale').val());
     $('#sd_scale_value').val(extension_settings.sd.scale.toFixed(1));
-    saveSettingsDebounced();
+    delayedSettingsSave();
 }
 
 function onStepsInput() {
     extension_settings.sd.steps = Number($('#sd_steps').val());
     $('#sd_steps_value').val(extension_settings.sd.steps);
-    saveSettingsDebounced();
+    delayedSettingsSave();
 }
 
 async function onPromptPrefixInput() {
     extension_settings.sd.prompt_prefix = $('#sd_prompt_prefix').val();
-    saveSettingsDebounced();
+    delayedSettingsSave();
     if (CSS.supports('field-sizing', 'content')) return;
     await resetScrollHeight($(this));
 }
 
 async function onNegativePromptInput() {
     extension_settings.sd.negative_prompt = $('#sd_negative_prompt').val();
-    saveSettingsDebounced();
+    delayedSettingsSave();
     if (CSS.supports('field-sizing', 'content')) return;
     await resetScrollHeight($(this));
 }
@@ -1113,13 +1114,13 @@ function onSchedulerChange() {
 function onWidthInput() {
     extension_settings.sd.width = Number($('#sd_width').val());
     $('#sd_width_value').val(extension_settings.sd.width);
-    saveSettingsDebounced();
+    delayedSettingsSave();
 }
 
 function onHeightInput() {
     extension_settings.sd.height = Number($('#sd_height').val());
     $('#sd_height_value').val(extension_settings.sd.height);
-    saveSettingsDebounced();
+    delayedSettingsSave();
 }
 
 function onSwapDimensionsClick() {
@@ -1246,37 +1247,37 @@ function onHighResFixInput() {
 
 function onAutoUrlInput() {
     extension_settings.sd.auto_url = $('#sd_auto_url').val();
-    saveSettingsDebounced();
+    delayedSettingsSave();
 }
 
 function onAutoAuthInput() {
     extension_settings.sd.auto_auth = $('#sd_auto_auth').val();
-    saveSettingsDebounced();
+    delayedSettingsSave();
 }
 
 function onSdcppUrlInput() {
     extension_settings.sd.sdcpp_url = $('#sd_sdcpp_url').val();
-    saveSettingsDebounced();
+    delayedSettingsSave();
 }
 
 function onVladUrlInput() {
     extension_settings.sd.vlad_url = $('#sd_vlad_url').val();
-    saveSettingsDebounced();
+    delayedSettingsSave();
 }
 
 function onVladAuthInput() {
     extension_settings.sd.vlad_auth = $('#sd_vlad_auth').val();
-    saveSettingsDebounced();
+    delayedSettingsSave();
 }
 
 function onDrawthingsUrlInput() {
     extension_settings.sd.drawthings_url = $('#sd_drawthings_url').val();
-    saveSettingsDebounced();
+    delayedSettingsSave();
 }
 
 function onDrawthingsAuthInput() {
     extension_settings.sd.drawthings_auth = $('#sd_drawthings_auth').val();
-    saveSettingsDebounced();
+    delayedSettingsSave();
 }
 
 function onHrUpscalerChange() {
@@ -1287,34 +1288,34 @@ function onHrUpscalerChange() {
 function onHrScaleInput() {
     extension_settings.sd.hr_scale = Number($('#sd_hr_scale').val());
     $('#sd_hr_scale_value').val(extension_settings.sd.hr_scale.toFixed(1));
-    saveSettingsDebounced();
+    delayedSettingsSave();
 }
 
 function onDenoisingStrengthInput() {
     extension_settings.sd.denoising_strength = Number($('#sd_denoising_strength').val());
     $('#sd_denoising_strength_value').val(extension_settings.sd.denoising_strength.toFixed(2));
-    saveSettingsDebounced();
+    delayedSettingsSave();
 }
 
 function onHrSecondPassStepsInput() {
     extension_settings.sd.hr_second_pass_steps = Number($('#sd_hr_second_pass_steps').val());
     $('#sd_hr_second_pass_steps_value').val(extension_settings.sd.hr_second_pass_steps);
-    saveSettingsDebounced();
+    delayedSettingsSave();
 }
 
 function onComfyUrlInput() {
     extension_settings.sd.comfy_url = String($('#sd_comfy_url').val());
-    saveSettingsDebounced();
+    delayedSettingsSave();
 }
 
 function onComfyRunPodUrlInput() {
     extension_settings.sd.comfy_runpod_url = String($('#sd_comfy_runpod_url').val());
-    saveSettingsDebounced();
+    delayedSettingsSave();
 }
 
 function onHFModelInput() {
     extension_settings.sd.huggingface_model_id = $('#sd_huggingface_model_id').val();
-    saveSettingsDebounced();
+    delayedSettingsSave();
 }
 
 function onComfyWorkflowChange() {

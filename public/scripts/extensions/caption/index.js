@@ -1,4 +1,4 @@
-import { ensureImageFormatSupported, getBase64Async, getFileExtension, isTrueBoolean, saveBase64AsFile } from '../../utils.js';
+import { ensureImageFormatSupported, getBase64Async, getFileExtension, isTrueBoolean, saveBase64AsFile, debounce } from '../../utils.js';
 import { getContext, getApiUrl, doExtrasFetch, extension_settings, modules, renderExtensionTemplateAsync } from '../../extensions.js';
 import { appendMediaToMessage, chat_metadata, eventSource, event_types, getRequestHeaders, saveChatConditional, saveSettingsDebounced, substituteParams } from '../../../script.js';
 import { getMessageTimeStamp } from '../../RossAscends-mods.js';
@@ -15,6 +15,7 @@ import { debounce_timeout, MEDIA_DISPLAY, MEDIA_SOURCE, MEDIA_TYPE, SCROLL_BEHAV
 export { MODULE_NAME };
 
 const MODULE_NAME = 'caption';
+const delayedSettingsSave = debounce(() => saveSettingsDebounced(), 2500);
 
 const PROMPT_DEFAULT = 'What\'s in this image?';
 const TEMPLATE_DEFAULT = '[{{user}} sends {{char}} a picture that contains: {{caption}}]';
@@ -650,11 +651,11 @@ export async function init() {
     });
     $('#caption_prompt').on('input', () => {
         extension_settings.caption.prompt = String($('#caption_prompt').val());
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
     $('#caption_template').on('input', () => {
         extension_settings.caption.template = String($('#caption_template').val());
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
     $('#caption_allow_reverse_proxy').on('input', () => {
         extension_settings.caption.allow_reverse_proxy = $('#caption_allow_reverse_proxy').prop('checked');
@@ -689,7 +690,7 @@ export async function init() {
     });
     $('#caption_altEndpoint_url').val(extension_settings.caption.alt_endpoint_url).on('input', () => {
         extension_settings.caption.alt_endpoint_url = String($('#caption_altEndpoint_url').val());
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
     $('#caption_altEndpoint_enabled').prop('checked', !!(extension_settings.caption.alt_endpoint_enabled)).on('input', () => {
         extension_settings.caption.alt_endpoint_enabled = !!$('#caption_altEndpoint_enabled').prop('checked');
@@ -701,11 +702,11 @@ export async function init() {
     });
     $('#caption_ollama_custom_model').val(extension_settings.caption.ollama_custom_model || '').on('input', () => {
         extension_settings.caption.ollama_custom_model = String($('#caption_ollama_custom_model').val()).trim();
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
     $('#caption_custom_model').val(extension_settings.caption.custom_model || '').on('input', () => {
         extension_settings.caption.custom_model = String($('#caption_custom_model').val()).trim();
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
     $('#caption_refresh_models').on('click', async () => {
         extension_settings.caption.multimodal_model = '';

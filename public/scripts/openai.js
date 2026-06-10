@@ -66,6 +66,7 @@ import {
     stringFormat,
     textValueMatcher,
     uuidv4,
+    debounce,
 } from './utils.js';
 import { countTokensOpenAIAsync, getTokenizerModel } from './tokenizers.js';
 import { isMobile } from './RossAscends-mods.js';
@@ -138,6 +139,7 @@ const unlocked_max = max_2mil;
 const oai_max_temp = 2.0;
 const claude_max_temp = 1.0;
 const mistral_max_temp = 1.5;
+const delayedSettingsSave = debounce(() => saveSettingsDebounced(), 2500);
 const openrouter_website_model = 'OR_Website';
 const openai_max_stop_strings = 4;
 
@@ -6641,49 +6643,49 @@ export function initOpenAI() {
     $('#temp_openai').on('input', function () {
         oai_settings.temp_openai = Number($(this).val());
         $('#temp_counter_openai').val(Number($(this).val()).toFixed(2));
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
 
     $('#freq_pen_openai').on('input', function () {
         oai_settings.freq_pen_openai = Number($(this).val());
         $('#freq_pen_counter_openai').val(Number($(this).val()).toFixed(2));
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
 
     $('#pres_pen_openai').on('input', function () {
         oai_settings.pres_pen_openai = Number($(this).val());
         $('#pres_pen_counter_openai').val(Number($(this).val()).toFixed(2));
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
 
     $('#top_p_openai').on('input', function () {
         oai_settings.top_p_openai = Number($(this).val());
         $('#top_p_counter_openai').val(Number($(this).val()).toFixed(2));
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
 
     $('#top_k_openai').on('input', function () {
         oai_settings.top_k_openai = Number($(this).val());
         $('#top_k_counter_openai').val(Number($(this).val()).toFixed(0));
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
 
     $('#top_a_openai').on('input', function () {
         oai_settings.top_a_openai = Number($(this).val());
         $('#top_a_counter_openai').val(Number($(this).val()));
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
 
     $('#min_p_openai').on('input', function () {
         oai_settings.min_p_openai = Number($(this).val());
         $('#min_p_counter_openai').val(Number($(this).val()));
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
 
     $('#repetition_penalty_openai').on('input', function () {
         oai_settings.repetition_penalty_openai = Number($(this).val());
         $('#repetition_penalty_counter_openai').val(Number($(this).val()));
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
 
     $('#openai_max_context').on('input', function () {
@@ -6692,7 +6694,7 @@ export function initOpenAI() {
         calculateOpenRouterCost();
         calculateElectronHubCost();
         calculateChutesCost();
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
 
     $('#openai_max_tokens').on('input', function () {
@@ -6700,7 +6702,7 @@ export function initOpenAI() {
         calculateOpenRouterCost();
         calculateElectronHubCost();
         calculateChutesCost();
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
 
     $('#stream_toggle').on('change', function () {
@@ -6715,52 +6717,52 @@ export function initOpenAI() {
 
     $('#send_if_empty_textarea').on('input', function () {
         oai_settings.send_if_empty = String($('#send_if_empty_textarea').val());
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
 
     $('#impersonation_prompt_textarea').on('input', function () {
         oai_settings.impersonation_prompt = String($('#impersonation_prompt_textarea').val());
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
 
     $('#newchat_prompt_textarea').on('input', function () {
         oai_settings.new_chat_prompt = String($('#newchat_prompt_textarea').val());
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
 
     $('#newgroupchat_prompt_textarea').on('input', function () {
         oai_settings.new_group_chat_prompt = String($('#newgroupchat_prompt_textarea').val());
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
 
     $('#newexamplechat_prompt_textarea').on('input', function () {
         oai_settings.new_example_chat_prompt = String($('#newexamplechat_prompt_textarea').val());
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
 
     $('#continue_nudge_prompt_textarea').on('input', function () {
         oai_settings.continue_nudge_prompt = String($('#continue_nudge_prompt_textarea').val());
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
 
     $('#wi_format_textarea').on('input', function () {
         oai_settings.wi_format = String($('#wi_format_textarea').val());
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
 
     $('#scenario_format_textarea').on('input', function () {
         oai_settings.scenario_format = String($('#scenario_format_textarea').val());
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
 
     $('#personality_format_textarea').on('input', function () {
         oai_settings.personality_format = String($('#personality_format_textarea').val());
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
 
     $('#group_nudge_prompt_textarea').on('input', function () {
         oai_settings.group_nudge_prompt = String($('#group_nudge_prompt_textarea').val());
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
 
     $('#update_oai_preset').on('click', async function () {
@@ -6857,17 +6859,17 @@ export function initOpenAI() {
 
     $('#openai_proxy_password').on('input', function () {
         oai_settings.proxy_password = String($(this).val());
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
 
     $('#claude_assistant_prefill').on('input', function () {
         oai_settings.assistant_prefill = String($(this).val());
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
 
     $('#claude_assistant_impersonation').on('input', function () {
         oai_settings.assistant_impersonation = String($(this).val());
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
 
     $('#openrouter_use_fallback').on('input', function () {
@@ -6917,7 +6919,7 @@ export function initOpenAI() {
         oai_settings.tool_call_recurse_limit = Number($(this).val());
         $('#tool_call_recurse_limit_counter').val(oai_settings.tool_call_recurse_limit);
         ToolManager.RECURSE_LIMIT = oai_settings.tool_call_recurse_limit;
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
 
     $('#tool_reasoning_mode').on('input', function () {
@@ -6930,22 +6932,22 @@ export function initOpenAI() {
 
     $('#seed_openai').on('input', function () {
         oai_settings.seed = Number($(this).val());
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
 
     $('#n_openai').on('input', function () {
         oai_settings.n = Number($(this).val());
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
 
     $('#custom_api_url_text').on('input', function () {
         oai_settings.custom_url = String($(this).val());
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
 
     $('#custom_model_id').on('input', function () {
         oai_settings.custom_model = String($(this).val());
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
 
     $('#custom_prompt_post_processing').on('change', function () {
@@ -6957,17 +6959,17 @@ export function initOpenAI() {
     $('#names_behavior').on('input', function () {
         oai_settings.names_behavior = Number($(this).val());
         setNamesBehaviorControls();
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
 
     $('#azure_base_url').on('input', function () {
         oai_settings.azure_base_url = String($(this).val());
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
 
     $('#azure_deployment_name').on('input', function () {
         oai_settings.azure_deployment_name = String($(this).val());
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
 
     $('#azure_api_version').on('input change', function () {
@@ -7002,7 +7004,7 @@ export function initOpenAI() {
     $('#continue_postifx').on('input', function () {
         oai_settings.continue_postfix = String($(this).val());
         setContinuePostfixControls();
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
 
     $('#continue_postfix_none').on('input', function () {

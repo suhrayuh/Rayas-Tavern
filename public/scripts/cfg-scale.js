@@ -9,7 +9,7 @@ import {
 } from '../script.js';
 import { extension_settings, saveMetadataDebounced } from './extensions.js';
 import { selected_group } from './group-chats.js';
-import { getCharaFilename, delay } from './utils.js';
+import { getCharaFilename, delay, debounce } from './utils.js';
 import { power_user } from './power-user.js';
 
 const extensionName = 'cfg';
@@ -25,10 +25,11 @@ const settingType = {
     negative_prompt: 1,
     positive_prompt: 2,
 };
+const delayedSettingsSave = debounce(() => saveSettingsDebounced(), 2500);
 
 // Used for character and chat CFG values
 function updateSettings() {
-    saveSettingsDebounced();
+    delayedSettingsSave();
     loadSettings();
 }
 
@@ -321,17 +322,17 @@ export function initCfg() {
     $('#global_cfg_guidance_scale').on('input', function () {
         extension_settings.cfg.global.guidance_scale = Number($(this).val());
         $('#global_cfg_guidance_scale_counter').val(extension_settings.cfg.global.guidance_scale.toFixed(2));
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
 
     $('#global_cfg_negative_prompt').on('input', function () {
         extension_settings.cfg.global.negative_prompt = $(this).val();
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
 
     $('#global_cfg_positive_prompt').on('input', function () {
         extension_settings.cfg.global.positive_prompt = $(this).val();
-        saveSettingsDebounced();
+        delayedSettingsSave();
     });
 
     $('input[name="cfg_prompt_combine"]').on('input', function () {

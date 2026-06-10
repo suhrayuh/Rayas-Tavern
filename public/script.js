@@ -2037,12 +2037,16 @@ export function updateMessageBlock(messageId, message, { rerenderMessage = true 
     const messageElement = chatElement.find(`[mesid="${messageId}"]`);
     if (rerenderMessage) {
         const text = message?.extra?.display_text ?? message.mes;
-        messageElement.find('.mes_text').html(messageFormatting(text, message.name, message.is_system, message.is_user, messageId, {}, false));
+        const mesText = messageElement.find('.mes_text');
+        const formattedText = messageFormatting(text, message.name, message.is_system, message.is_user, messageId, {}, false);
+
+        if (mesText.html() !== formattedText) {
+            mesText.html(formattedText);
+            addCopyToCodeBlocks(messageElement);
+        }
     }
 
     updateReasoningUI(messageElement);
-
-    addCopyToCodeBlocks(messageElement);
     appendMediaToMessage(message, messageElement);
 }
 
@@ -2229,6 +2233,19 @@ export function appendMediaToMessage(mes, messageElement, scrollBehavior = SCROL
 
     const mediaBlocks = [];
     const mediaPromises = [];
+
+    const mediaSignature = JSON.stringify({
+        media: Array.isArray(mes?.extra?.media) ? mes.extra.media : [],
+        files: Array.isArray(mes?.extra?.files) ? mes.extra.files : [],
+        mediaDisplay,
+        hideMessageText,
+    });
+
+    if (messageElement.attr('data-media-signature') === mediaSignature) {
+        return;
+    }
+
+    messageElement.attr('data-media-signature', mediaSignature);
 
     const chatHeight = (hasMedia || hasFiles) ? chatElement.prop('scrollHeight') : 0;
     const scrollPosition = (hasMedia || hasFiles) ? chatElement.scrollTop() : 0;

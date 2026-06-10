@@ -410,6 +410,10 @@ function isContextChanged(context) {
 }
 
 function onChatChanged() {
+    if (extension_settings.memory.memoryFrozen) {
+        return;
+    }
+
     const context = getContext();
     const latestMemory = getLatestMemoryFromChat(context.chat);
     setMemoryContext(latestMemory, false);

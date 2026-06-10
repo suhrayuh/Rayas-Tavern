@@ -932,7 +932,7 @@ function registerReasoningSlashCommands() {
             await saveChatConditional();
 
             closeMessageEditor('reasoning');
-            updateMessageBlock(messageId, message);
+            updateMessageBlock(messageId, message, { rerenderMessage: false });
 
             if (isTrueBoolean(String(args.collapse))) $(`#chat [mesid="${messageId}"] .mes_reasoning_details`).removeAttr('open');
             if (isFalseBoolean(String(args.collapse))) $(`#chat [mesid="${messageId}"] .mes_reasoning_details`).attr('open', '');
@@ -1285,7 +1285,7 @@ function setReasoningEventHandlers() {
         }
         updateReasoningFromValue(message, newReasoning);
         await saveChatConditional();
-        updateMessageBlock(messageId, message);
+        updateMessageBlock(messageId, message, { rerenderMessage: false });
 
         messageBlock.find('.mes_edit_done:visible').trigger('click');
         await eventSource.emit(event_types.MESSAGE_REASONING_EDITED, messageId);
@@ -1347,7 +1347,7 @@ function setReasoningEventHandlers() {
         delete message.extra.reasoning_type;
         delete message.extra.reasoning_duration;
         await saveChatConditional();
-        updateMessageBlock(messageId, message);
+        updateMessageBlock(messageId, message, { rerenderMessage: false });
         const textarea = messageBlock.find('.reasoning_edit_textarea');
         textarea.remove();
         await eventSource.emit(event_types.MESSAGE_REASONING_DELETED, messageId);

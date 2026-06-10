@@ -20,6 +20,10 @@ import { selected_group } from './group-chats.js';
 import { ConnectionManagerRequestService } from './extensions/shared.js';
 import { Popup } from './popup.js';
 import { power_user } from './power-user.js';
+import { getTokenCountAsync } from './tokenizers.js';
+import { SlashCommandParser } from './slash-commands/SlashCommandParser.js';
+import { SlashCommand } from './slash-commands/SlashCommand.js';
+import { ARGUMENT_TYPE, SlashCommandArgument } from './slash-commands/SlashCommandArgument.js';
 import { getSortableDelay } from './utils.js';
 
 const MODULE_NAME = 'rayasAgents';
@@ -27,6 +31,7 @@ const PRE_AGENT_PROMPT_KEY = 'rayas_agents_pre';
 const POST_AGENTS_FINISHED_EVENT = 'rayas_agents_post_finished';
 const DEFAULT_AGENT_MAX_TOKENS = 512;
 const DEFAULT_AGENT_PRIORITY = 100;
+const DEFAULT_MIN_AGENT_MESSAGE_TOKENS = 500;
 const MIN_AGENT_MAX_TOKENS = 16;
 const MAX_AGENT_MAX_TOKENS = 16000;
 
@@ -40,6 +45,7 @@ function ensureAgentsSettings() {
     if (!agentSettings[MODULE_NAME] || typeof agentSettings[MODULE_NAME] !== 'object') {
         agentSettings[MODULE_NAME] = {
             enabled: true,
+            minMessageTokens: DEFAULT_MIN_AGENT_MESSAGE_TOKENS,
             agents: [],
         };
     }
@@ -49,6 +55,12 @@ function ensureAgentsSettings() {
     if (typeof settings.enabled !== 'boolean') {
         settings.enabled = true;
     }
+
+    if (!Number.isFinite(Number(settings.minMessageTokens))) {
+        settings.minMessageTokens = DEFAULT_MIN_AGENT_MESSAGE_TOKENS;
+    }
+
+    settings.minMessageTokens = Math.max(0, Math.min(100000, Number(settings.minMessageTokens)));
 
     if (!Array.isArray(settings.agents)) {
         settings.agents = [];
@@ -197,13 +209,19 @@ function resequenceAgents(agents) {
 }
 
 function getEnabledAgentsByPhase(phase) {
+    return getEnabledAgentsByPhases([phase]);
+}
+
+function getEnabledAgentsByPhases(phases) {
     const settings = ensureAgentsSettings();
     if (!settings.enabled) {
         return [];
     }
 
+    const phaseSet = new Set((Array.isArray(phases) ? phases : [phases]).map(phase => String(phase ?? '')));
+
     return settings.agents
-        .filter(agent => agent.enabled && agent.phase === phase)
+        .filter(agent => agent.enabled && phaseSet.has(String(agent.phase ?? '')))
         .sort((a, b) => Number(a.priority) - Number(b.priority));
 }
 
@@ -401,8 +419,10 @@ function stripTrackerBlocks(text) {
     return cleaned.trim();
 }
 
-function buildPastContextXml(message, pastMessageCount) {
-    const currentIndex = Number(chat.indexOf(message));
+function buildPastContextXml(message, pastMessageCount, messageId = null) {
+    const currentIndex = Number.isInteger(Number(messageId))
+        ? Number(messageId)
+        : Number(chat.indexOf(message));
     if (!Number.isInteger(currentIndex) || currentIndex < 0) {
         return '';
     }
@@ -425,9 +445,29 @@ function buildPastContextXml(message, pastMessageCount) {
     }).join('\n\n');
 }
 
-function createRevisionContext(message) {
-    const originalMessage = String(message?.mes ?? '');
+function getFallbackAssistantText(message, revisionContext = null) {
+    const revisionMessage = String(revisionContext?.currentMessage ?? '').trim();
+    if (revisionMessage) {
+        return revisionMessage;
+    }
+
+    const messageText = String(message?.mes ?? '').trim();
+    if (messageText) {
+        return messageText;
+    }
+
+    const reasoningText = stripTrackerBlocks(String(message?.extra?.reasoning ?? '')).trim();
+    if (reasoningText) {
+        return reasoningText;
+    }
+
+    return '';
+}
+
+function createRevisionContext(message, messageId = null) {
+    const originalMessage = getFallbackAssistantText(message);
     return {
+        messageId: Number.isInteger(Number(messageId)) ? Number(messageId) : Number(chat.indexOf(message)),
         originalMessage,
         currentMessage: originalMessage,
         passes: [],
@@ -468,15 +508,20 @@ function buildRevisionHistoryXml(revisionContext) {
     return `<revision_history>\n<original_message>\n${escapeXmlText(revisionContext.originalMessage)}\n</original_message>\n<current_message>\n${escapeXmlText(revisionContext.currentMessage)}\n</current_message>\n<previous_passes>\n${passXml}\n</previous_passes>\n<do_not_reintroduce>${forbiddenXml}\n</do_not_reintroduce>\n<notes_for_next_pass>${notesXml}\n</notes_for_next_pass>\n</revision_history>`;
 }
 
-function buildAgentContext(agent, { message = null, generationType = '', source = '', revisionContext = null } = {}) {
+function buildAgentContext(agent, { message = null, messageId = null, generationType = '', source = '', revisionContext = null } = {}) {
     const character = getCurrentCharacter();
     const personaDescription = typeof power_user !== 'undefined' ? String(power_user.persona_description ?? '') : '';
     const worldInfoText = agent.inputMode.includeWorldInfo
         ? String(chat_metadata?.world_info ?? '')
         : '';
-    const messageText = stripTrackerBlocks(revisionContext ? String(revisionContext.currentMessage ?? message?.mes ?? '') : String(message?.mes ?? ''));
+    const messageText = stripTrackerBlocks(getFallbackAssistantText(message, revisionContext));
     const mainReply = agent.inputMode.includeMainReply ? messageText : '';
-    const chatXml = agent.inputMode.includeChat ? buildPastContextXml(message, Number(agent.pastMessageCount ?? 0)) : '';
+    const contextMessageId = Number.isInteger(Number(revisionContext?.messageId))
+        ? Number(revisionContext.messageId)
+        : Number.isInteger(Number(messageId))
+            ? Number(messageId)
+            : Number(chat.indexOf(message));
+    const chatXml = agent.inputMode.includeChat ? buildPastContextXml(message, Number(agent.pastMessageCount ?? 0), contextMessageId) : '';
     const currentMessageXml = mainReply ? `<current_message>\n${mainReply}\n</current_message>` : '';
     const revisionHistoryXml = buildRevisionHistoryXml(revisionContext);
 
@@ -569,6 +614,25 @@ async function runAgentCompletion(agent, context) {
     }
 
     return '';
+}
+
+async function getAgentGateInfo(message, revisionContext = null) {
+    const minTokens = Math.max(0, Number(ensureAgentsSettings().minMessageTokens ?? 0));
+    const assistantText = getFallbackAssistantText(message, revisionContext);
+    if (!assistantText) {
+        return { shouldSkip: true, reason: 'empty', minTokens, tokenCount: 0, assistantText };
+    }
+
+    if (minTokens <= 0) {
+        return { shouldSkip: false, reason: '', minTokens, tokenCount: 0, assistantText };
+    }
+
+    const tokenCount = await getTokenCountAsync(assistantText, 0);
+    if (tokenCount < minTokens) {
+        return { shouldSkip: true, reason: 'below_threshold', minTokens, tokenCount, assistantText };
+    }
+
+    return { shouldSkip: false, reason: '', minTokens, tokenCount, assistantText };
 }
 
 async function runPreAgents(generationType = 'normal') {
@@ -721,7 +785,8 @@ async function runPostAgentsForMessage(messageId, generationType = 'normal', sou
         return false;
     }
 
-    let agents = getEnabledAgentsByPhase('post');
+    const phases = source === 'manual' ? ['post', 'manual'] : ['post'];
+    let agents = getEnabledAgentsByPhases(phases);
     if (forcedAgentId) {
         agents = agents.filter(agent => agent.id === forcedAgentId);
     }
@@ -731,7 +796,19 @@ async function runPostAgentsForMessage(messageId, generationType = 'normal', sou
         return false;
     }
 
-    const revisionContext = createRevisionContext(message);
+    const revisionContext = createRevisionContext(message, messageId);
+    const gateInfo = await getAgentGateInfo(message, revisionContext);
+    if (gateInfo.shouldSkip) {
+        if (source === 'manual') {
+            if (gateInfo.reason === 'below_threshold') {
+                toastr.info(`Skipped agents: assistant reply is only ${gateInfo.tokenCount} tokens, below the global minimum of ${gateInfo.minTokens}.`, 'Agents');
+            } else {
+                toastr.info('Skipped agents: no assistant reply text was available for this message.', 'Agents');
+            }
+        }
+        return false;
+    }
+
     const shouldToastProgress = source === 'draft' && agents.length > 0;
     let progressToast = null;
 
@@ -755,8 +832,8 @@ async function runPostAgentsForMessage(messageId, generationType = 'normal', sou
                     progressToast = showPostAgentProgressToast(progressMessage, 'Agents');
                 }
 
-                const inputMessage = String(revisionContext.currentMessage ?? message.mes ?? '');
-                const context = buildAgentContext(agent, { message, generationType, source, revisionContext });
+                const inputMessage = getFallbackAssistantText(message, revisionContext);
+                const context = buildAgentContext(agent, { message, messageId, generationType, source, revisionContext });
                 const result = await runAgentCompletion(agent, context);
                 const applyResult = await applyPostAgentResult(agent, messageId, result, { updateDom });
                 const changed = Boolean(applyResult.changed);
@@ -830,7 +907,18 @@ async function runSingleAgentAgainstLatestMessage(agentId) {
     if (agent.outputMode.type === 'inject') {
         try {
             const message = hasAssistantMessage ? chat[lastAssistantMessageId] : null;
-            const context = buildAgentContext(agent, { message, generationType: 'manual', source: 'manual' });
+            const gateInfo = message && agent.inputMode.includeMainReply
+                ? await getAgentGateInfo(message)
+                : { shouldSkip: false };
+            if (gateInfo.shouldSkip) {
+                if (gateInfo.reason === 'below_threshold') {
+                    toastr.info(`Skipped agent test: assistant reply is only ${gateInfo.tokenCount} tokens, below the global minimum of ${gateInfo.minTokens}.`, 'Agents');
+                } else {
+                    toastr.info('Skipped agent test: no assistant reply text was available for this message.', 'Agents');
+                }
+                return;
+            }
+            const context = buildAgentContext(agent, { message, messageId: lastAssistantMessageId, generationType: 'manual', source: 'manual' });
             const result = await runAgentCompletion(agent, context);
             toastr.success(result ? 'Agent test completed.' : 'Agent returned no text.', 'Agents');
         } catch (error) {
@@ -856,6 +944,47 @@ async function runSingleAgentAgainstLatestMessage(agentId) {
 
 async function runManualAgent(agentId) {
     return await runSingleAgentAgainstLatestMessage(agentId);
+}
+
+async function runEnabledAgentsCommand(_args, value) {
+    const rawValue = String(value ?? '').trim();
+    const messageId = rawValue.length ? Number(rawValue) : getLastAssistantMessageId();
+
+    if (!Number.isInteger(messageId) || messageId < 0 || !chat[messageId]) {
+        throw new Error('No valid message id provided and no latest assistant message is available.');
+    }
+
+    const message = chat[messageId];
+    if (!message || message.is_user || message.is_system) {
+        throw new Error('Target message must be an assistant message.');
+    }
+
+    const changed = await runPostAgentsForMessage(messageId, 'manual', 'manual', {
+        updateDom: true,
+        emitLateEvents: true,
+    });
+
+    return changed
+        ? `Ran enabled agents on assistant message ${messageId}. Changes applied.`
+        : `Ran enabled agents on assistant message ${messageId}. No changes applied.`;
+}
+
+function registerSlashCommands() {
+    SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+        name: 'run-agents',
+        aliases: ['agents-run'],
+        callback: runEnabledAgentsCommand,
+        unnamedArgumentList: [
+            SlashCommandArgument.fromProps({
+                description: 'assistant message id',
+                typeList: [ARGUMENT_TYPE.NUMBER],
+                isRequired: false,
+                defaultValue: '',
+            }),
+        ],
+        returns: ARGUMENT_TYPE.STRING,
+        helpString: 'Runs all enabled post/manual agents on the given assistant message id. If omitted, uses the latest assistant message.',
+    }));
 }
 
 function renderAgentCard(agent) {
@@ -1150,6 +1279,11 @@ function bindUi() {
         renderAgentsList();
     });
 
+    $('#agents_global_min_tokens').on('input', function () {
+        ensureAgentsSettings().minMessageTokens = Math.max(0, Number($(this).val() || 0));
+        saveAgentsSettings();
+    });
+
     $('#agents_new_agent').on('click', () => openAgentEditor());
     $('#agents_refresh_profiles').on('click', populateConnectionProfileSelects);
     $('#agents_editor_output_type').on('change', syncOutputModeUi);
@@ -1174,6 +1308,7 @@ function bindUi() {
 function syncUiFromSettings() {
     const settings = ensureAgentsSettings();
     $('#agents_global_enabled').prop('checked', settings.enabled);
+    $('#agents_global_min_tokens').val(settings.minMessageTokens);
     populateConnectionProfileSelects();
     syncOutputModeUi();
     renderAgentsList();
@@ -1226,6 +1361,7 @@ export function initAgents() {
     ensureAgentsSettings();
     bindUi();
     syncUiFromSettings();
+    registerSlashCommands();
 
     eventSource.on(event_types.CONNECTION_PROFILE_CREATED, populateConnectionProfileSelects);
     eventSource.on(event_types.CONNECTION_PROFILE_UPDATED, populateConnectionProfileSelects);

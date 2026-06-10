@@ -5828,6 +5828,13 @@
                     </label>
                 </div>
                 <div id="agents_holder" class="margin5 flex-container flexFlowColumn gap10px">
+                    <div class="flex-container flexWrap gap10px alignitemsend">
+                        <label class="flex-container flexFlowColumn gap4px minWidth200px">
+                            <small data-i18n="Minimum Assistant Reply Tokens">Minimum Assistant Reply Tokens</small>
+                            <input id="agents_global_min_tokens" class="text_pole" type="number" min="0" max="100000" step="1">
+                        </label>
+                        <small class="text_muted flex1">If the assistant reply is shorter than this, post/manual agents will skip it. Set to 0 to disable.</small>
+                    </div>
                     <div class="agents-toolbar flex-container flexWrap gap10px alignitemscenter">
                         <div id="agents_new_agent" class="menu_button menu_button_icon" title="Create a new agent" data-i18n="[title]Create a new agent">
                             <i class="fa-solid fa-plus"></i>

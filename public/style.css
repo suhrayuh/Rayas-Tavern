@@ -6011,6 +6011,68 @@ body:not(.movingUI) .drawer-content.maximized {
     box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), 0 0 16px rgba(241,77,166,0.08);
 }
 
+.agents-header-actions {
+    justify-content: flex-start;
+    flex: 1 1 560px;
+    min-width: min(100%, 320px);
+    align-items: stretch;
+}
+
+.agents-header-actions .agents-global-toggle,
+.agents-header-button,
+.agents-header-token-control {
+    height: 44px;
+    min-width: 150px;
+    border-radius: 999px !important;
+    border: 1px solid rgba(241, 77, 166, 0.24);
+    background: rgba(255, 255, 255, 0.06);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), 0 0 16px rgba(241,77,166,0.08);
+    box-sizing: border-box;
+    justify-content: center;
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 auto;
+}
+
+.agents-header-button {
+    padding: 0 14px;
+    color: #ffe4f3;
+    text-decoration: none;
+    line-height: 1;
+}
+
+.agents-header-button:hover,
+.agents-header-token-control:focus-within,
+.agents-header-actions .agents-global-toggle:hover {
+    border-color: rgba(241, 77, 166, 0.48);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 0 20px rgba(241,77,166,0.16);
+}
+
+.agents-header-token-control {
+    gap: 8px;
+    padding: 0 10px 0 13px;
+    color: #ffe4f3;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.agents-header-token-control span {
+    font-size: 0.85em;
+}
+
+#AgentsPanel .agents-header-token-control #agents_global_min_tokens {
+    width: 68px;
+    min-height: 28px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    text-align: center;
+    background: rgba(8, 6, 10, 0.62);
+}
+
+.agents-min-token-helper {
+    margin: -4px 8px 2px;
+}
+
 .agents-toolbar {
     gap: 12px;
 }

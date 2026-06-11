@@ -247,6 +247,14 @@ app.get('/callback/:source?', (request, response) => {
 // Host login page
 app.get('/login', loginPageMiddleware);
 
+app.get('/agentplayground', cacheBuster.middleware, (request, response) => {
+    if (shouldRedirectToLogin(request)) {
+        return response.redirect('/login');
+    }
+
+    return response.sendFile('agentplayground.html', { root: path.join(serverDirectory, 'public') });
+});
+
 // Host frontend assets
 const webpackMiddleware = getWebpackServeMiddleware();
 app.use(webpackMiddleware);

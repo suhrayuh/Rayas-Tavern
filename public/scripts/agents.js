@@ -16,60 +16,30 @@ import {
     updateMessageBlock,
 } from '../script.js';
 import { extension_settings } from './extensions.js';
-import { selected_group } from './group-chats.js';
 import { ConnectionManagerRequestService } from './extensions/shared.js';
+import { selected_group } from './group-chats.js';
 import { Popup } from './popup.js';
 import { power_user } from './power-user.js';
-import { getTokenCountAsync } from './tokenizers.js';
 import { SlashCommandParser } from './slash-commands/SlashCommandParser.js';
 import { SlashCommand } from './slash-commands/SlashCommand.js';
 import { ARGUMENT_TYPE, SlashCommandArgument } from './slash-commands/SlashCommandArgument.js';
+import { getTokenCountAsync } from './tokenizers.js';
 import { getSortableDelay } from './utils.js';
+import {
+    PRE_AGENT_PROMPT_KEY,
+    DEFAULT_AGENT_MAX_TOKENS,
+    DEFAULT_AGENT_PRIORITY,
+    ensureAgentsSettings,
+    generateAgentId,
+    normalizeAgent,
+    getAgents,
+    resequenceAgents,
+} from './agents-core.js';
 
-const MODULE_NAME = 'rayasAgents';
-const PRE_AGENT_PROMPT_KEY = 'rayas_agents_pre';
 const POST_AGENTS_FINISHED_EVENT = 'rayas_agents_post_finished';
-const DEFAULT_AGENT_MAX_TOKENS = 512;
-const DEFAULT_AGENT_PRIORITY = 100;
-const DEFAULT_MIN_AGENT_MESSAGE_TOKENS = 500;
-const MIN_AGENT_MAX_TOKENS = 16;
-const MAX_AGENT_MAX_TOKENS = 16000;
 
 let activeGenerationState = null;
 let isRunningPostAgents = false;
-
-function ensureAgentsSettings() {
-    /** @type {any} */
-    const agentSettings = extension_settings;
-
-    if (!agentSettings[MODULE_NAME] || typeof agentSettings[MODULE_NAME] !== 'object') {
-        agentSettings[MODULE_NAME] = {
-            enabled: true,
-            minMessageTokens: DEFAULT_MIN_AGENT_MESSAGE_TOKENS,
-            agents: [],
-        };
-    }
-
-    const settings = agentSettings[MODULE_NAME];
-
-    if (typeof settings.enabled !== 'boolean') {
-        settings.enabled = true;
-    }
-
-    if (!Number.isFinite(Number(settings.minMessageTokens))) {
-        settings.minMessageTokens = DEFAULT_MIN_AGENT_MESSAGE_TOKENS;
-    }
-
-    settings.minMessageTokens = Math.max(0, Math.min(100000, Number(settings.minMessageTokens)));
-
-    if (!Array.isArray(settings.agents)) {
-        settings.agents = [];
-    }
-
-    settings.agents = settings.agents.map(normalizeAgent);
-    resequenceAgents(settings.agents);
-    return settings;
-}
 
 function createDefaultAgent() {
     return normalizeAgent({
@@ -106,106 +76,6 @@ function createDefaultAgent() {
         priority: DEFAULT_AGENT_PRIORITY,
         maxTokens: DEFAULT_AGENT_MAX_TOKENS,
     });
-}
-
-function normalizeAgent(rawAgent = {}) {
-    const defaults = {
-        id: generateAgentId(),
-        name: '',
-        enabled: true,
-        description: '',
-        phase: 'pre',
-        connectionProfileId: '',
-        prompt: '',
-        pastMessageCount: 3,
-        expanded: true,
-        inputMode: {
-            includeChat: true,
-            includeCharacter: true,
-            includePersona: true,
-            includeWorldInfo: false,
-            includeMainReply: false,
-        },
-        outputMode: {
-            type: 'inject',
-            role: 'system',
-            storeKey: 'agent_result',
-            structured: false,
-        },
-        conditions: {
-            onlyGroupChats: false,
-            onlyCharacterChats: false,
-            skipSwipe: false,
-            skipContinue: false,
-            skipImpersonate: true,
-            skipQuiet: false,
-        },
-        priority: DEFAULT_AGENT_PRIORITY,
-        maxTokens: DEFAULT_AGENT_MAX_TOKENS,
-    };
-
-    const phase = ['pre', 'post', 'manual'].includes(String(rawAgent.phase ?? '')) ? String(rawAgent.phase) : defaults.phase;
-    const outputType = ['inject', 'rewrite', 'append', 'metadata'].includes(String(rawAgent?.outputMode?.type ?? ''))
-        ? String(rawAgent.outputMode.type)
-        : defaults.outputMode.type;
-    const outputRole = ['system', 'user', 'assistant'].includes(String(rawAgent?.outputMode?.role ?? ''))
-        ? String(rawAgent.outputMode.role)
-        : defaults.outputMode.role;
-
-    return {
-        id: typeof rawAgent.id === 'string' && rawAgent.id.trim() ? rawAgent.id.trim() : defaults.id,
-        name: typeof rawAgent.name === 'string' ? rawAgent.name : defaults.name,
-        enabled: Object.hasOwn(rawAgent, 'enabled') ? Boolean(rawAgent.enabled) : defaults.enabled,
-        description: typeof rawAgent.description === 'string' ? rawAgent.description : defaults.description,
-        phase,
-        connectionProfileId: typeof rawAgent.connectionProfileId === 'string' ? rawAgent.connectionProfileId : defaults.connectionProfileId,
-        prompt: typeof rawAgent.prompt === 'string' ? rawAgent.prompt : defaults.prompt,
-        pastMessageCount: Number.isFinite(Number(rawAgent.pastMessageCount))
-            ? Math.max(0, Math.min(50, Number(rawAgent.pastMessageCount)))
-            : defaults.pastMessageCount,
-        expanded: Object.hasOwn(rawAgent, 'expanded') ? Boolean(rawAgent.expanded) : defaults.expanded,
-        inputMode: {
-            includeChat: Boolean(rawAgent?.inputMode?.includeChat ?? defaults.inputMode.includeChat),
-            includeCharacter: Boolean(rawAgent?.inputMode?.includeCharacter ?? defaults.inputMode.includeCharacter),
-            includePersona: Boolean(rawAgent?.inputMode?.includePersona ?? defaults.inputMode.includePersona),
-            includeWorldInfo: Boolean(rawAgent?.inputMode?.includeWorldInfo ?? defaults.inputMode.includeWorldInfo),
-            includeMainReply: Boolean(rawAgent?.inputMode?.includeMainReply ?? defaults.inputMode.includeMainReply),
-        },
-        outputMode: {
-            type: outputType,
-            role: outputRole,
-            storeKey: typeof rawAgent?.outputMode?.storeKey === 'string' && rawAgent.outputMode.storeKey.trim()
-                ? rawAgent.outputMode.storeKey.trim()
-                : defaults.outputMode.storeKey,
-            structured: Boolean(rawAgent?.outputMode?.structured ?? defaults.outputMode.structured),
-        },
-        conditions: {
-            onlyGroupChats: Boolean(rawAgent?.conditions?.onlyGroupChats ?? defaults.conditions.onlyGroupChats),
-            onlyCharacterChats: Boolean(rawAgent?.conditions?.onlyCharacterChats ?? defaults.conditions.onlyCharacterChats),
-            skipSwipe: Boolean(rawAgent?.conditions?.skipSwipe ?? defaults.conditions.skipSwipe),
-            skipContinue: Boolean(rawAgent?.conditions?.skipContinue ?? defaults.conditions.skipContinue),
-            skipImpersonate: Boolean(rawAgent?.conditions?.skipImpersonate ?? defaults.conditions.skipImpersonate),
-            skipQuiet: Boolean(rawAgent?.conditions?.skipQuiet ?? defaults.conditions.skipQuiet),
-        },
-        priority: Number.isFinite(Number(rawAgent.priority)) ? Number(rawAgent.priority) : defaults.priority,
-        maxTokens: Number.isFinite(Number(rawAgent.maxTokens))
-            ? Math.max(MIN_AGENT_MAX_TOKENS, Math.min(MAX_AGENT_MAX_TOKENS, Number(rawAgent.maxTokens)))
-            : defaults.maxTokens,
-    };
-}
-
-function generateAgentId() {
-    return `agent_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-}
-
-function getAgents() {
-    return ensureAgentsSettings().agents;
-}
-
-function resequenceAgents(agents) {
-    for (let index = 0; index < agents.length; index++) {
-        agents[index].priority = (index + 1) * 10;
-    }
 }
 
 function getEnabledAgentsByPhase(phase) {
@@ -599,7 +469,8 @@ async function runAgentCompletion(agent, context) {
         return '';
     }
 
-    const response = await ConnectionManagerRequestService.sendRequest(profileId, prompt, Number(agent.maxTokens), {
+    const maxTokens = Number(agent.maxTokens) > 0 ? Number(agent.maxTokens) : null;
+    const response = await ConnectionManagerRequestService.sendRequest(profileId, prompt, maxTokens, {
         stream: false,
         extractData: true,
     });
@@ -1256,7 +1127,9 @@ function readEditorAgent() {
             skipQuiet: $('#agents_editor_skip_quiet').prop('checked'),
         },
         priority: Number($('#agents_editor_priority').val() || DEFAULT_AGENT_PRIORITY),
-        maxTokens: Number($('#agents_editor_max_tokens').val() || DEFAULT_AGENT_MAX_TOKENS),
+        maxTokens: $('#agents_editor_max_tokens').val() === ''
+            ? DEFAULT_AGENT_MAX_TOKENS
+            : Number($('#agents_editor_max_tokens').val()),
         pastMessageCount: Number($('#agents_editor_past_message_count').val() || 3),
     });
 }

@@ -426,6 +426,7 @@ export class ConnectionManagerRequestService {
 
         const profile = this.getProfile(profileId);
         const selectedApiMap = this.validateProfile(profile);
+        const maxTokensPayload = Number(maxTokens) > 0 ? { max_tokens: Number(maxTokens) } : {};
 
         try {
             switch (selectedApiMap.selected) {
@@ -440,7 +441,7 @@ export class ConnectionManagerRequestService {
                     return await context.ChatCompletionService.processRequest({
                         stream,
                         messages,
-                        max_tokens: maxTokens,
+                        ...maxTokensPayload,
                         model: profile.model,
                         chat_completion_source: selectedApiMap.source,
                         secret_id: profile['secret-id'],
@@ -465,7 +466,7 @@ export class ConnectionManagerRequestService {
                     return await context.TextCompletionService.processRequest({
                         stream,
                         prompt,
-                        max_tokens: maxTokens,
+                        ...maxTokensPayload,
                         model: profile.model,
                         api_type: selectedApiMap.type,
                         api_server: profile['api-url'],

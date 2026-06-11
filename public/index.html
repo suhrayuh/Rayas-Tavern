@@ -5822,29 +5822,31 @@
                         </h3>
                         <small class="text_muted" data-i18n="Agents are AI helpers that can inject context before generation, transform final replies after generation, or run manually.">Agents are AI helpers that can inject context before generation, transform final replies after generation, or run manually.</small>
                     </div>
-                    <label class="checkbox_label flexNoGap agents-global-toggle" for="agents_global_enabled" title="Enable or disable all agents" data-i18n="[title]Enable or disable all agents">
-                        <input id="agents_global_enabled" type="checkbox">
-                        <span data-i18n="Enable Agents">Enable Agents</span>
-                    </label>
-                </div>
-                <div id="agents_holder" class="margin5 flex-container flexFlowColumn gap10px">
-                    <div class="flex-container flexWrap gap10px alignitemsend">
-                        <label class="flex-container flexFlowColumn gap4px minWidth200px">
-                            <small data-i18n="Minimum Assistant Reply Tokens">Minimum Assistant Reply Tokens</small>
+                    <div class="agents-header-actions flex-container flexWrap gap10px alignitemscenter">
+                        <label class="checkbox_label flexNoGap agents-global-toggle" for="agents_global_enabled" title="Enable or disable all agents" data-i18n="[title]Enable or disable all agents">
+                            <input id="agents_global_enabled" type="checkbox">
+                            <span data-i18n="Enable Agents">Enable Agents</span>
+                        </label>
+                        <label class="agents-header-token-control" title="Minimum assistant reply tokens before post/manual agents run">
+                            <span data-i18n="Minimum Assistant Reply Tokens">Min Tokens</span>
                             <input id="agents_global_min_tokens" class="text_pole" type="number" min="0" max="100000" step="1">
                         </label>
-                        <small class="text_muted flex1">If the assistant reply is shorter than this, post/manual agents will skip it. Set to 0 to disable.</small>
-                    </div>
-                    <div class="agents-toolbar flex-container flexWrap gap10px alignitemscenter">
-                        <div id="agents_new_agent" class="menu_button menu_button_icon" title="Create a new agent" data-i18n="[title]Create a new agent">
+                        <div id="agents_new_agent" class="menu_button menu_button_icon agents-header-button" title="Create a new agent" data-i18n="[title]Create a new agent">
                             <i class="fa-solid fa-plus"></i>
                             <span data-i18n="New Agent">New Agent</span>
                         </div>
-                        <div id="agents_refresh_profiles" class="menu_button menu_button_icon" title="Refresh connection profiles" data-i18n="[title]Refresh connection profiles">
+                        <a id="agents_open_playground" class="menu_button menu_button_icon agents-header-button" href="/agentplayground" target="_blank" rel="noopener noreferrer" title="Open Agent Playground">
+                            <i class="fa-solid fa-up-right-from-square"></i>
+                            <span>Open Playground</span>
+                        </a>
+                        <div id="agents_refresh_profiles" class="menu_button menu_button_icon agents-header-button" title="Refresh connection profiles" data-i18n="[title]Refresh connection profiles">
                             <i class="fa-solid fa-rotate"></i>
                             <span data-i18n="Refresh Profiles">Refresh Profiles</span>
                         </div>
                     </div>
+                </div>
+                <div id="agents_holder" class="margin5 flex-container flexFlowColumn gap10px">
+                    <small class="text_muted agents-min-token-helper">Post/manual agents skip assistant replies shorter than the min token setting. Set to 0 to disable.</small>
                     <div id="agents_editor" class="agents-editor displayNone">
                         <div class="agents-editor-header flex-container alignitemscenter gap10px spaceBetween flexWrap">
                             <h4 class="margin0" data-i18n="Agent Editor">Agent Editor</h4>
@@ -5919,7 +5921,7 @@
                             </label>
                             <label class="flex-container flexFlowColumn gap4px flex1 minWidth200px">
                                 <small data-i18n="Max Tokens">Max Tokens</small>
-                                <input id="agents_editor_max_tokens" class="text_pole" type="number" min="16" max="16000" step="1">
+                                <input id="agents_editor_max_tokens" class="text_pole" type="number" min="0" max="16000" step="1">
                             </label>
                             <label class="flex-container flexFlowColumn gap4px flex1 minWidth200px">
                                 <small data-i18n="Past Context Messages">Past Context Messages</small>

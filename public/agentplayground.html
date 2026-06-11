@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agent Playground</title>
+    <link rel="stylesheet" href="/style.css">
+    <style>
+        :root {
+            --ap-pk: var(--SmartThemeQuoteColor, #f14da6);
+            --ap-lt: color-mix(in srgb, var(--ap-pk) 28%, white);
+            --ap-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor, #1a1218) 92%, black 8%);
+            --ap-bg2: color-mix(in srgb, var(--ap-bg) 88%, white 4%);
+            --ap-bg3: color-mix(in srgb, var(--ap-bg) 82%, white 7%);
+            --ap-border: color-mix(in srgb, var(--SmartThemeBorderColor, #3d2e3a) 70%, transparent);
+            --ap-border-pk: color-mix(in srgb, var(--ap-pk) 40%, transparent);
+            --ap-text: var(--SmartThemeBodyColor, #e8d8e4);
+            --ap-text2: color-mix(in srgb, var(--ap-text) 54%, transparent);
+            --ap-font-mono: var(--monoFontFamily, 'Courier New', monospace);
+            --ap-font-pixel: 'Press Start 2P', monospace;
+            --ap-font-terminal: 'VT323', monospace;
+            --ap-font-body: var(--mainFontFamily, sans-serif);
+        }
+
+        body.agent-playground-body {
+            margin: 0;
+            min-height: 100vh;
+            overflow-y: auto;
+            background: var(--ap-bg);
+            color: var(--ap-text);
+            font-family: var(--mainFontFamily, sans-serif);
+        }
+
+        .ap-shell {
+            min-height: 100vh;
+            padding: 12px;
+            box-sizing: border-box;
+        }
+
+        .ap {
+            background: var(--ap-bg);
+            color: var(--ap-text);
+            border-radius: 14px;
+            border: 1px solid var(--ap-border);
+            overflow: hidden;
+            box-shadow: 0 18px 50px rgba(0, 0, 0, 0.25);
+            min-height: calc(100vh - 24px);
+        }
+
+        .ap-topbar {
+            background: var(--ap-bg2);
+            border-bottom: 1px solid var(--ap-border-pk);
+            padding: 0 16px;
+            min-height: 44px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .ap-topbar-title {
+            color: var(--ap-pk);
+            font-size: 12px;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            font-family: var(--ap-font-pixel);
+        }
+
+        .ap-pill {
+            background: var(--ap-bg3);
+            border: 1px solid var(--ap-border);
+            border-radius: 5px;
+            padding: 4px 8px;
+            font-size: 11px;
+            color: var(--ap-lt);
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            min-height: 28px;
+            box-sizing: border-box;
+            font-family: var(--ap-font-body);
+        }
+
+        .ap-pill-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 999px;
+            background: var(--ap-pk);
+            flex: 0 0 auto;
+        }
+
+        .ap-layout {
+            display: grid;
+            grid-template-columns: 260px 1fr;
+            min-height: calc(100vh - 70px);
+        }
+
+        .ap-sidebar {
+            background: var(--ap-bg2);
+            border-right: 1px solid var(--ap-border);
+            padding: 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .ap-section-label {
+            font-size: 10px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: var(--ap-text2);
+            padding: 0 2px 6px;
+            border-bottom: 1px solid var(--ap-border);
+            font-family: var(--ap-font-pixel);
+        }
+
+        .ap-agents-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .ap-agent-card {
+            background: var(--ap-bg3);
+            border: 1px solid var(--ap-border);
+            border-radius: 8px;
+            padding: 10px;
+            cursor: pointer;
+            transition: border-color 160ms ease, transform 160ms ease, opacity 160ms ease;
+            position: relative;
+        }
+
+        .ap-agent-card:hover {
+            border-color: var(--ap-border-pk);
+            transform: translateY(-1px);
+        }
+
+        .ap-agent-card.is-active {
+            border-color: var(--ap-border-pk);
+            background: color-mix(in srgb, var(--ap-pk) 10%, var(--ap-bg3));
+            box-shadow:
+                inset 0 0 0 1px color-mix(in srgb, var(--ap-pk) 55%, transparent),
+                0 0 12px color-mix(in srgb, var(--ap-pk) 36%, transparent),
+                0 0 28px color-mix(in srgb, var(--ap-pk) 16%, transparent);
+            animation: ap-active-agent-pulse 2200ms ease-in-out infinite;
+        }
+
+        .ap-agent-card.is-active::before {
+            content: '';
+            position: absolute;
+            left: -1px;
+            top: 10px;
+            bottom: 10px;
+            width: 3px;
+            border-radius: 999px;
+            background: var(--ap-pk);
+            box-shadow: 0 0 10px var(--ap-pk);
+        }
+
+        @keyframes ap-active-agent-pulse {
+            0%, 100% {
+                box-shadow:
+                    inset 0 0 0 1px color-mix(in srgb, var(--ap-pk) 55%, transparent),
+                    0 0 10px color-mix(in srgb, var(--ap-pk) 30%, transparent),
+                    0 0 22px color-mix(in srgb, var(--ap-pk) 12%, transparent);
+            }
+            50% {
+                box-shadow:
+                    inset 0 0 0 1px color-mix(in srgb, var(--ap-pk) 90%, transparent),
+                    0 0 18px color-mix(in srgb, var(--ap-pk) 46%, transparent),
+                    0 0 34px color-mix(in srgb, var(--ap-pk) 24%, transparent);
+            }
+        }
+
+        .ap-agent-name {
+            color: var(--ap-pk);
+            font-size: 13px;
+            font-family: var(--ap-font-pixel);
+            font-size: 12px;
+            line-height: 1.35;
+        }
+
+        .ap-agent-desc {
+            color: var(--ap-text2);
+            font-size: 11px;
+            margin-top: 4px;
+            line-height: 1.45;
+            font-family: var(--ap-font-body);
+        }
+
+        .ap-tags {
+            display: flex;
+            gap: 4px;
+            margin-top: 8px;
+            flex-wrap: wrap;
+        }
+
+        .ap-tag {
+            background: color-mix(in srgb, var(--ap-pk) 12%, transparent);
+            border: 1px solid var(--ap-border-pk);
+            border-radius: 4px;
+            padding: 2px 6px;
+            font-size: 10px;
+            color: var(--ap-lt);
+            font-family: var(--ap-font-pixel);
+        }
+
+        .ap-stat {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: var(--ap-bg3);
+            border: 1px solid var(--ap-border);
+            border-radius: 6px;
+            padding: 7px 9px;
+        }
+
+        .ap-stat-label {
+            font-size: 11px;
+            color: var(--ap-text2);
+            font-family: var(--ap-font-pixel);
+        }
+
+        .ap-stat-value {
+            font-size: 11px;
+            color: var(--ap-lt);
+            font-family: var(--ap-font-body);
+            line-height: 1.2;
+        }
+
+        .ap-prompt-preview {
+            margin-top: auto;
+            font-size: 11px;
+            color: var(--ap-text2);
+            line-height: 1.5;
+            border-top: 1px solid var(--ap-border);
+            padding-top: 10px;
+            font-family: var(--ap-font-body);
+        }
+
+        .ap-prompt-preview strong {
+            color: var(--ap-lt);
+            display: block;
+            margin-bottom: 4px;
+            font-family: var(--ap-font-pixel);
+        }
+
+        .ap-main {
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .ap-config {
+            background: var(--ap-bg2);
+            border-bottom: 1px solid var(--ap-border);
+            padding: 14px 16px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px 14px;
+        }
+
+        .ap-field {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .ap-field--full {
+            grid-column: 1 / -1;
+        }
+
+        .ap-field label {
+            font-size: 10px;
+            color: var(--ap-text2);
+            letter-spacing: 1.6px;
+            text-transform: uppercase;
+            font-family: var(--ap-font-pixel);
+        }
+
+        .ap-input,
+        .ap-select {
+            width: 100%;
+            min-height: 42px;
+            box-sizing: border-box;
+            background: color-mix(in srgb, var(--ap-bg3) 90%, white 2%);
+            border: 1px solid var(--ap-border);
+            border-radius: 6px;
+            padding: 8px 12px;
+            color: var(--ap-text);
+            font: inherit;
+            font-family: var(--ap-font-body);
+            font-size: 15px;
+        }
+
+        .ap-input:focus,
+        .ap-select:focus {
+            outline: none;
+            border-color: var(--ap-border-pk);
+            box-shadow: 0 0 0 1px color-mix(in srgb, var(--ap-pk) 26%, transparent);
+        }
+
+        .ap-actions {
+            grid-column: 1 / -1;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .ap-button {
+            min-height: 40px;
+            padding: 0 14px;
+            border-radius: 7px;
+            border: 1px solid var(--ap-border-pk);
+            background: var(--ap-bg3);
+            color: var(--ap-text);
+            font: inherit;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-size: 11px;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-family: var(--ap-font-pixel);
+        }
+
+        .ap-button:hover {
+            border-color: var(--ap-pk);
+        }
+
+        .ap-button--primary {
+            background: color-mix(in srgb, var(--ap-pk) 16%, var(--ap-bg3));
+        }
+
+        .ap-status {
+            font-size: 12px;
+            color: var(--ap-text2);
+            font-family: var(--ap-font-body);
+        }
+
+        .ap-context-strip {
+            background: var(--ap-bg2);
+            border-bottom: 1px solid var(--ap-border);
+            padding: 10px 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .ap-context-row {
+            display: flex;
+            align-items: baseline;
+            gap: 8px;
+            min-width: 0;
+        }
+
+        .ap-context-tag {
+            font-size: 10px;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            padding: 2px 6px;
+            border-radius: 4px;
+            flex: 0 0 auto;
+            border: 1px solid var(--ap-border);
+            background: var(--ap-bg3);
+            color: var(--ap-text2);
+            font-family: var(--ap-font-pixel);
+        }
+
+        .ap-context-tag.current {
+            border-color: var(--ap-border-pk);
+            background: color-mix(in srgb, var(--ap-pk) 12%, transparent);
+            color: var(--ap-pk);
+        }
+
+        .ap-context-text {
+            font-size: 12px;
+            color: var(--ap-text2);
+            font-family: var(--ap-font-body);
+            font-size: 12px;
+            line-height: 1.35;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            min-width: 0;
+        }
+
+        .ap-context-text.current {
+            color: var(--ap-text);
+        }
+
+        .ap-panels {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            min-height: 0;
+            flex: 1;
+        }
+
+        .ap-panel {
+            border-right: 1px solid var(--ap-border);
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+        }
+
+        .ap-panel:last-child {
+            border-right: none;
+        }
+
+        .ap-panel-header {
+            background: var(--ap-bg2);
+            border-bottom: 1px solid var(--ap-border);
+            padding: 10px 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .ap-panel-model {
+            font-size: 12px;
+            color: var(--ap-pk);
+            font-family: var(--ap-font-pixel);
+            font-size: 12px;
+            line-height: 1.35;
+        }
+
+        .ap-panel-badge {
+            margin-left: auto;
+            font-size: 10px;
+            padding: 2px 7px;
+            border-radius: 4px;
+            border: 1px solid var(--ap-border);
+            color: var(--ap-text2);
+            background: var(--ap-bg3);
+            font-family: var(--ap-font-pixel);
+        }
+
+        .ap-panel-badge.done {
+            color: #7dda7d;
+            background: rgba(47, 93, 47, 0.28);
+            border-color: rgba(98, 174, 98, 0.35);
+        }
+
+        .ap-panel-body {
+            display: block;
+            min-height: 0;
+            flex: 1;
+        }
+
+        .ap-block {
+            min-height: auto;
+            display: block;
+            border-bottom: 1px solid var(--ap-border);
+        }
+
+        .ap-block:last-child {
+            border-bottom: none;
+        }
+
+        .ap-block-label {
+            font-size: 10px;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            color: var(--ap-text2);
+            padding: 10px 14px 6px;
+            font-family: var(--ap-font-pixel);
+        }
+
+        .ap-scroll {
+            min-height: 0;
+            overflow: visible;
+            padding: 0 14px 14px;
+        }
+
+        .ap-scroll pre,
+        .ap-scroll {
+            font-family: var(--ap-font-body);
+            font-size: 14px;
+            line-height: 1.6;
+            color: var(--ap-text);
+        }
+
+        .ap-scroll pre {
+            margin: 0;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+        }
+
+        .ap-diff {
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+        }
+
+        .ap-diff del,
+        .ap-diff ins,
+        .ap-diff span {
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+        }
+
+        .ap-diff del {
+            background: rgba(130, 24, 42, 0.28);
+            color: #ff9191;
+            text-decoration: line-through;
+            border-radius: 3px;
+            padding: 0 2px;
+        }
+
+        .ap-diff ins {
+            background: rgba(34, 112, 53, 0.28);
+            color: #8fffc0;
+            text-decoration: none;
+            border-radius: 3px;
+            padding: 0 2px;
+        }
+
+        .ap-reasoning-empty {
+            color: var(--ap-text2);
+            font-style: italic;
+        }
+
+        .displayNone {
+            display: none !important;
+        }
+
+        @media (max-width: 1100px) {
+            .ap-layout {
+                grid-template-columns: 1fr;
+            }
+
+            .ap-sidebar {
+                border-right: none;
+                border-bottom: 1px solid var(--ap-border);
+            }
+
+            .ap-panels,
+            .ap-config {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .ap-agent-card.is-active {
+                animation: none;
+            }
+        }
+    </style>
+</head>
+<body class="agent-playground-body">
+    <main class="ap-shell">
+        <div class="ap">
+            <div class="ap-topbar">
+                <span class="ap-topbar-title">✦ Agent Playground</span>
+                <span class="ap-pill"><span class="ap-pill-dot"></span><span id="agentplayground_top_model_a">Model A</span></span>
+                <span class="ap-pill"><span class="ap-pill-dot"></span><span id="agentplayground_top_model_b">Model B</span></span>
+                <span class="ap-pill"><span class="ap-pill-dot"></span><span id="agentplayground_top_chat">No chat selected</span></span>
+            </div>
+
+            <div class="ap-layout">
+                <aside class="ap-sidebar">
+                    <div class="ap-section-label">Agents</div>
+                    <div id="agentplayground_agents_list" class="ap-agents-list"></div>
+                    <select id="agentplayground_agent" class="ap-select displayNone"></select>
+
+                    <div class="ap-section-label">Context Window</div>
+                    <label class="ap-field">
+                        <label for="agentplayground_chat">Chat</label>
+                        <select id="agentplayground_chat" class="ap-select"></select>
+                    </label>
+                    <div class="ap-stat"><span class="ap-stat-label">prior messages</span><span id="agentplayground_stat_prior" class="ap-stat-value">0</span></div>
+                    <div class="ap-stat"><span class="ap-stat-label">current msg</span><span id="agentplayground_stat_current" class="ap-stat-value">0 chars</span></div>
+                    <div class="ap-stat"><span class="ap-stat-label">prompt size</span><span id="agentplayground_stat_prompt" class="ap-stat-value">0 chars</span></div>
+                </aside>
+
+                <section class="ap-main">
+                    <div class="ap-config">
+                        <div class="ap-field ap-field--full">
+                            <label for="agentplayground_provider_url">Provider</label>
+                            <input id="agentplayground_provider_url" class="ap-input" type="url" placeholder="https://openrouter.ai/api/v1">
+                        </div>
+                        <div class="ap-field">
+                            <label for="agentplayground_model_a">Model A</label>
+                            <input id="agentplayground_model_a" class="ap-input" type="text" placeholder="anthropic/claude-opus-4-1">
+                        </div>
+                        <div class="ap-field">
+                            <label for="agentplayground_model_b">Model B</label>
+                            <input id="agentplayground_model_b" class="ap-input" type="text" placeholder="google/gemini-2.5-pro">
+                        </div>
+                        <div class="ap-field ap-field--full">
+                            <label for="agentplayground_provider_key">API Key</label>
+                            <input id="agentplayground_provider_key" class="ap-input" type="password" placeholder="Stored server-side after save">
+                        </div>
+                        <div class="ap-actions">
+                            <button id="agentplayground_save_config" class="ap-button">Save Config</button>
+                            <button id="agentplayground_run" class="ap-button ap-button--primary">▶ Run Both</button>
+                            <span id="agentplayground_key_state" class="ap-status">API key not saved yet.</span>
+                            <span id="agentplayground_status" class="ap-status">Ready.</span>
+                        </div>
+                    </div>
+
+                    <div class="ap-context-strip">
+                        <div class="ap-context-row">
+                            <span class="ap-context-tag">prior</span>
+                            <span id="agentplayground_prior_context_line_1" class="ap-context-text">Select a chat and agent.</span>
+                        </div>
+                        <div class="ap-context-row">
+                            <span class="ap-context-tag">prior</span>
+                            <span id="agentplayground_prior_context_line_2" class="ap-context-text">Select a chat and agent.</span>
+                        </div>
+                        <div class="ap-context-row">
+                            <span class="ap-context-tag current">current ↓</span>
+                            <span id="agentplayground_current_message_line" class="ap-context-text current">Select a chat and agent.</span>
+                        </div>
+                    </div>
+
+                    <div class="ap-panels">
+                        <article class="ap-panel">
+                            <div class="ap-panel-header">
+                                <span class="ap-panel-model" id="agentplayground_profile_a_title">Model A</span>
+                                <span class="ap-panel-badge" id="agentplayground_profile_a_meta">Idle</span>
+                            </div>
+                            <div class="ap-panel-body">
+                                <section class="ap-block">
+                                    <div class="ap-block-label">Diff vs Original</div>
+                                    <div id="agentplayground_diff_a" class="ap-scroll ap-diff">No result yet.</div>
+                                </section>
+                                <section class="ap-block">
+                                    <div class="ap-block-label">Reasoning</div>
+                                    <div class="ap-scroll"><pre id="agentplayground_reasoning_a" class="ap-reasoning-empty">null</pre></div>
+                                </section>
+                            </div>
+                        </article>
+
+                        <article class="ap-panel">
+                            <div class="ap-panel-header">
+                                <span class="ap-panel-model" id="agentplayground_profile_b_title">Model B</span>
+                                <span class="ap-panel-badge" id="agentplayground_profile_b_meta">Idle</span>
+                            </div>
+                            <div class="ap-panel-body">
+                                <section class="ap-block">
+                                    <div class="ap-block-label">Diff vs Original</div>
+                                    <div id="agentplayground_diff_b" class="ap-scroll ap-diff">No result yet.</div>
+                                </section>
+                                <section class="ap-block">
+                                    <div class="ap-block-label">Reasoning</div>
+                                    <div class="ap-scroll"><pre id="agentplayground_reasoning_b" class="ap-reasoning-empty">null</pre></div>
+                                </section>
+                            </div>
+                        </article>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </main>
+
+    <script type="module" src="/scripts/agent-playground.js"></script>
+</body>
+</html>

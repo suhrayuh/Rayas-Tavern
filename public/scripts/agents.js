@@ -34,6 +34,7 @@ import {
     normalizeAgent,
     getAgents,
     resequenceAgents,
+    decodeHtmlEntities,
 } from './agents-core.js';
 
 const POST_AGENTS_FINISHED_EVENT = 'rayas_agents_post_finished';
@@ -552,10 +553,17 @@ function clearPreAgentInjection() {
 
 async function applyPostAgentResult(agent, messageId, result, { updateDom = true } = {}) {
     const message = chat[messageId];
-    const structured = parseStructuredAgentResult(result);
-    const effectiveResult = structured && ['rewrite', 'append'].includes(agent.outputMode.type)
-        ? String(structured.revised_message ?? '')
-        : String(result ?? '');
+    const structured = agent.outputMode.structured ? parseStructuredAgentResult(result) : null;
+
+    if (agent.outputMode.structured && !structured) {
+        throw new Error(`Agent "${agent.name || 'Unnamed Agent'}" produced invalid or incomplete structured output. Keeping original text.`);
+    }
+
+    const effectiveResult = decodeHtmlEntities(
+        structured && ['rewrite', 'append'].includes(agent.outputMode.type)
+            ? String(structured.revised_message ?? '')
+            : String(result ?? ''),
+    );
 
     if (!message) {
         return { changed: false, outputMessage: '', metadata: structured };

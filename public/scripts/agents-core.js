@@ -319,6 +319,22 @@ export function escapeXmlText(value) {
         .replace(/'/g, '&apos;');
 }
 
+export function decodeHtmlEntities(rawText) {
+    const text = String(rawText ?? '');
+    if (!text.includes('&')) {
+        return text;
+    }
+
+    return text
+        .replace(/&quot;/gi, '"')
+        .replace(/&apos;/gi, '\'')
+        .replace(/&#(?:x27|39);/gi, '\'')
+        .replace(/&#(?:x22|34);/gi, '"')
+        .replace(/&lt;/gi, '<')
+        .replace(/&gt;/gi, '>')
+        .replace(/&amp;/gi, '&');
+}
+
 export function escapeHtmlText(value) {
     return String(value ?? '')
         .replaceAll('&', '&amp;')

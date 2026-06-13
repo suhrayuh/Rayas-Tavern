@@ -78,6 +78,22 @@ function stripThinkBlocks(text) {
         .trim();
 }
 
+function decodeHtmlEntities(rawText) {
+    const text = String(rawText ?? '');
+    if (!text.includes('&')) {
+        return text;
+    }
+
+    return text
+        .replace(/&quot;/gi, '"')
+        .replace(/&apos;/gi, '\'')
+        .replace(/&#(?:x27|39);/gi, '\'')
+        .replace(/&#(?:x22|34);/gi, '"')
+        .replace(/&lt;/gi, '<')
+        .replace(/&gt;/gi, '>')
+        .replace(/&amp;/gi, '&');
+}
+
 function parsePlaygroundResponse(rawText) {
     const text = String(rawText ?? '').trim();
     const empty = {
@@ -96,8 +112,8 @@ function parsePlaygroundResponse(rawText) {
 
     try {
         const parsed = JSON.parse(candidate);
-        const revisedMessage = stripThinkBlocks(parsed?.revised_message ?? parsed?.message ?? parsed?.content ?? '');
-        const reasoning = parsed?.reasoning ?? parsed?.thinking ?? null;
+        const revisedMessage = decodeHtmlEntities(stripThinkBlocks(parsed?.revised_message ?? parsed?.message ?? parsed?.content ?? ''));
+        const reasoning = decodeHtmlEntities(parsed?.reasoning ?? parsed?.thinking ?? null);
         return {
             revisedMessage,
             reasoning: Array.isArray(reasoning) ? reasoning.join('\n') : reasoning,
@@ -107,7 +123,7 @@ function parsePlaygroundResponse(rawText) {
     } catch {
         return {
             ...empty,
-            revisedMessage: stripThinkBlocks(text),
+            revisedMessage: decodeHtmlEntities(stripThinkBlocks(text)),
         };
     }
 }

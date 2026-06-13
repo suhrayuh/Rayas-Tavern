@@ -272,12 +272,12 @@ export function buildPastContextXml(message, pastMessageCount, messageId = null)
 export function getFallbackAssistantText(message, revisionContext = null) {
     const revisionMessage = String(revisionContext?.currentMessage ?? '').trim();
     if (revisionMessage) {
-        return revisionMessage;
+        return extractInfoBoard(revisionMessage).body;
     }
 
     const messageText = String(message?.mes ?? '').trim();
     if (messageText) {
-        return messageText;
+        return extractInfoBoard(messageText).body;
     }
 
     const reasoningText = stripTrackerBlocks(String(message?.extra?.reasoning ?? '')).trim();
@@ -317,6 +317,18 @@ export function escapeXmlText(value) {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&apos;');
+}
+
+export function extractInfoBoard(rawText) {
+    const text = String(rawText ?? '');
+    const match = text.match(/(\[Info_Board\][\s\S]*?\[\/Info_Board\])/i);
+    if (!match) {
+        return { infoBoard: '', body: text };
+    }
+
+    const infoBoard = match[1];
+    const body = text.replace(infoBoard, '').trim();
+    return { infoBoard, body };
 }
 
 export function decodeHtmlEntities(rawText) {

@@ -35,6 +35,7 @@ import {
     getAgents,
     resequenceAgents,
     decodeHtmlEntities,
+    extractInfoBoard,
 } from './agents-core.js';
 
 const POST_AGENTS_FINISHED_EVENT = 'rayas_agents_post_finished';
@@ -319,12 +320,12 @@ function buildPastContextXml(message, pastMessageCount, messageId = null) {
 function getFallbackAssistantText(message, revisionContext = null) {
     const revisionMessage = String(revisionContext?.currentMessage ?? '').trim();
     if (revisionMessage) {
-        return revisionMessage;
+        return extractInfoBoard(revisionMessage).body;
     }
 
     const messageText = String(message?.mes ?? '').trim();
     if (messageText) {
-        return messageText;
+        return extractInfoBoard(messageText).body;
     }
 
     const reasoningText = stripTrackerBlocks(String(message?.extra?.reasoning ?? '')).trim();
@@ -556,7 +557,13 @@ async function applyPostAgentResult(agent, messageId, result, { updateDom = true
     const structured = agent.outputMode.structured ? parseStructuredAgentResult(result) : null;
 
     if (agent.outputMode.structured && !structured) {
-        throw new Error(`Agent "${agent.name || 'Unnamed Agent'}" produced invalid or incomplete structured output. Keeping original text.`);
+        console.warn(`[Agents] Agent "${agent.name || 'Unnamed Agent'}" produced invalid or incomplete structured output. Preserving previous text.`);
+        return {
+            changed: false,
+            outputMessage: String(message?.mes ?? ''),
+            metadata: null,
+            parseFailed: true,
+        };
     }
 
     const effectiveResult = decodeHtmlEntities(
@@ -566,37 +573,41 @@ async function applyPostAgentResult(agent, messageId, result, { updateDom = true
     );
 
     if (!message) {
-        return { changed: false, outputMessage: '', metadata: structured };
+        return { changed: false, outputMessage: '', metadata: structured, parseFailed: false };
     }
 
     message.extra = message.extra || {};
     message.extra.rayasAgents = message.extra.rayasAgents || {};
 
+    const { infoBoard, body } = extractInfoBoard(String(message.mes ?? ''));
+    const cleanResult = extractInfoBoard(effectiveResult).body;
+
     switch (agent.outputMode.type) {
         case 'rewrite': {
-            const rewritten = effectiveResult.trim();
-            if (!rewritten || rewritten === String(message.mes ?? '')) {
-                return { changed: false, outputMessage: String(message.mes ?? ''), metadata: structured };
+            const rewritten = cleanResult.trim();
+            if (!rewritten || rewritten === body) {
+                return { changed: false, outputMessage: String(message.mes ?? ''), metadata: structured, parseFailed: false };
             }
 
-            message.mes = rewritten;
+            const newMes = infoBoard ? `${infoBoard}\n\n${rewritten}` : rewritten;
+            message.mes = newMes;
             if (Array.isArray(message.swipes) && Number.isInteger(message.swipe_id)) {
                 const swipeIndex = Number(message.swipe_id);
                 if (swipeIndex >= 0 && swipeIndex < message.swipes.length) {
-                    message.swipes[swipeIndex] = rewritten;
+                    message.swipes[swipeIndex] = newMes;
                 }
             }
 
             if (updateDom && document.querySelector(`#chat [mesid="${messageId}"]`)) {
                 updateMessageBlock(messageId, message, { rerenderMessage: true });
             }
-            return { changed: true, outputMessage: rewritten, metadata: structured };
+            return { changed: true, outputMessage: newMes, metadata: structured, parseFailed: false };
         }
         case 'append': {
-            const appendText = effectiveResult.trim();
+            const appendText = cleanResult.trim();
             const appended = `${String(message.mes ?? '')}${String(message.mes ? '\n\n' : '')}${appendText}`;
             if (!appendText || appended === String(message.mes ?? '')) {
-                return { changed: false, outputMessage: String(message.mes ?? ''), metadata: structured };
+                return { changed: false, outputMessage: String(message.mes ?? ''), metadata: structured, parseFailed: false };
             }
 
             message.mes = appended;
@@ -610,14 +621,14 @@ async function applyPostAgentResult(agent, messageId, result, { updateDom = true
             if (updateDom && document.querySelector(`#chat [mesid="${messageId}"]`)) {
                 updateMessageBlock(messageId, message, { rerenderMessage: true });
             }
-            return { changed: true, outputMessage: appended, metadata: structured };
+            return { changed: true, outputMessage: appended, metadata: structured, parseFailed: false };
         }
         case 'metadata': {
             message.extra.rayasAgents[agent.outputMode.storeKey || 'agent_result'] = effectiveResult;
-            return { changed: true, outputMessage: String(message.mes ?? ''), metadata: structured };
+            return { changed: true, outputMessage: String(message.mes ?? ''), metadata: structured, parseFailed: false };
         }
         default:
-            return { changed: false, outputMessage: String(message.mes ?? ''), metadata: structured };
+            return { changed: false, outputMessage: String(message.mes ?? ''), metadata: structured, parseFailed: false };
     }
 }
 
@@ -716,9 +727,16 @@ async function runPostAgentsForMessage(messageId, generationType = 'normal', sou
                 const result = await runAgentCompletion(agent, context);
                 const applyResult = await applyPostAgentResult(agent, messageId, result, { updateDom });
                 const changed = Boolean(applyResult.changed);
-                updateRevisionContext(revisionContext, agent, inputMessage, applyResult.outputMessage, result, changed);
+                const parseFailed = Boolean(applyResult.parseFailed);
+
+                if (parseFailed) {
+                    toastr.warning(`Agent "${agent.name || 'Unnamed Agent'}" produced invalid structured output. Preserving text from previous successful agent.`, 'Agents');
+                } else {
+                    successfulPasses++;
+                }
+
+                updateRevisionContext(revisionContext, agent, inputMessage, applyResult.outputMessage, result, changed, { parseFailed });
                 messageChanged = messageChanged || changed;
-                successfulPasses++;
 
                 if (agent.outputMode.type === 'rewrite' && changed) {
                     compatibilityEventNeeded = true;
@@ -1069,14 +1087,17 @@ function parseStructuredAgentResult(rawResult) {
     }
 }
 
-function updateRevisionContext(revisionContext, agent, inputMessage, outputMessage, result, changed) {
+function updateRevisionContext(revisionContext, agent, inputMessage, outputMessage, result, changed, options = {}) {
     if (!revisionContext) {
         return;
     }
 
-    const structured = agent.outputMode.structured ? parseStructuredAgentResult(result) : null;
-    const summary = structured?.what_changed
-        || (changed ? `Revised message content${agent.name ? ` via ${agent.name}` : ''}.` : 'No changes made.');
+    const parseFailed = Boolean(options.parseFailed);
+    const structured = agent.outputMode.structured && !parseFailed ? parseStructuredAgentResult(result) : null;
+    const summary = parseFailed
+        ? `Failed to produce valid structured output; preserving text from previous successful agent${agent.name ? ` (${agent.name})` : ''}.`
+        : (structured?.what_changed
+            || (changed ? `Revised message content${agent.name ? ` via ${agent.name}` : ''}.` : 'No changes made.'));
     const blocked = uniqueStringList(structured?.removed_or_blocked_phrases);
     const notes = uniqueStringList(structured?.notes_for_future_passes);
 

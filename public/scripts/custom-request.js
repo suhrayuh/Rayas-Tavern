@@ -407,11 +407,26 @@ export class TextCompletionService {
             settings[key] = value;
         }
 
+        // Agent override: max_tokens: 0 means "omit / let the backend decide".
+        // Keep the sentinel out of the override so the preset's genamt doesn't get merged back in.
+        const shouldOmitMaxTokens = overridePayload.max_tokens === 0;
+        const cleanedOverridePayload = { ...overridePayload };
+        if (shouldOmitMaxTokens) {
+            delete cleanedOverridePayload.max_tokens;
+        }
+
         // convert to a generation payload
-        const payload = createTextGenGenerationData(settings, overridePayload.model, overridePayload.prompt, preset.genamt);
+        const payload = createTextGenGenerationData(settings, cleanedOverridePayload.model, cleanedOverridePayload.prompt, preset.genamt);
+
+        if (shouldOmitMaxTokens) {
+            delete payload.max_tokens;
+            delete payload.max_new_tokens;
+            delete payload.n_predict;
+            delete payload.num_predict;
+        }
 
         // apply overrides
-        return this.createRequestData({ ...payload, ...overridePayload });
+        return this.createRequestData({ ...payload, ...cleanedOverridePayload });
     }
 }
 
@@ -591,17 +606,29 @@ export class ChatCompletionService {
             settings[settingToUpdate[1]] = value;
         }
 
+        // Agent override: max_tokens: 0 means "omit / let the backend decide".
+        // Keep the sentinel out of the override so the preset's max_tokens doesn't get merged back in.
+        const shouldOmitMaxTokens = overridePayload.max_tokens === 0;
+        const cleanedOverridePayload = { ...overridePayload };
+        if (shouldOmitMaxTokens) {
+            delete cleanedOverridePayload.max_tokens;
+        }
+
         // Ensure api-url is properly applied for all sources that accept it
         ['custom_url', 'vertexai_region', 'zai_endpoint', 'siliconflow_endpoint', 'minimax_endpoint'].forEach(field => {
             // The order is: connection profile => CC preset => CC settings
-            overridePayload[field] = overridePayload[field] || settings[field] || oai_settings[field];
+            cleanedOverridePayload[field] = cleanedOverridePayload[field] || settings[field] || oai_settings[field];
         });
 
         // Convert from settings to generation payload
-        const data = await createGenerationParameters(settings, overridePayload.model, 'quiet', overridePayload.messages);
+        const data = await createGenerationParameters(settings, cleanedOverridePayload.model, 'quiet', cleanedOverridePayload.messages);
         const payload = data.generate_data;
 
+        if (shouldOmitMaxTokens) {
+            delete payload.max_tokens;
+        }
+
         // apply overrides
-        return this.createRequestData({ ...payload, ...overridePayload });
+        return this.createRequestData({ ...payload, ...cleanedOverridePayload });
     }
 }

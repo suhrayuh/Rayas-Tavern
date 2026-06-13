@@ -426,7 +426,9 @@ export class ConnectionManagerRequestService {
 
         const profile = this.getProfile(profileId);
         const selectedApiMap = this.validateProfile(profile);
-        const maxTokensPayload = Number(maxTokens) > 0 ? { max_tokens: Number(maxTokens) } : {};
+        // Pass max_tokens: 0 when disabled so preset merging sees the explicit override.
+        // presetToGeneratePayload in the completion services strips it back out before sending.
+        const maxTokensPayload = Number(maxTokens) > 0 ? { max_tokens: Number(maxTokens) } : { max_tokens: 0 };
 
         try {
             switch (selectedApiMap.selected) {

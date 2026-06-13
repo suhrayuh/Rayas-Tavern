@@ -84,8 +84,8 @@
 .splash-message {
     margin: 0;
     color: var(--raya-lilac-soft, #E9D2F4);
-    font-family: var(--mainFontFamily);
-    font-size: 1.45rem;
+    font-family: VT323;
+    font-size: 36px;
     font-weight: 500;
     opacity: 0.95;
     letter-spacing: 0.05em;

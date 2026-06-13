@@ -528,6 +528,37 @@ async function runAIWorldInfoSearch({ chat, normalEntries, maxOutputTokens }) {
         }));
 }
 
+async function runAIWorldInfoSearchWithRetry({ chat, normalEntries, maxOutputTokens, retries = 2 }) {
+    let lastError = null;
+    const maxAttempts = Math.max(1, Number(retries) + 1);
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+            const results = await runAIWorldInfoSearch({ chat, normalEntries, maxOutputTokens });
+            if (attempt > 1) {
+                console.log(`[WI] AI search succeeded on attempt ${attempt}`);
+            }
+            return results;
+        } catch (error) {
+            lastError = error;
+            console.warn(`[WI] AI search attempt ${attempt} failed`, error);
+            if (attempt < maxAttempts) {
+                await delay(250);
+            }
+        }
+    }
+
+    throw lastError || new Error('AI World Info search failed after retries');
+}
+
+/**
+ * @param {number} ms
+ * @returns {Promise<void>}
+ */
+function delay(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 // Typedef area
 /**
  * @typedef {object} WIGlobalScanData The chat-independent data to be scanned. Each of
@@ -5243,7 +5274,7 @@ export async function checkWorldInfo(chat, maxContext, isDryRun, globalScanData 
     if (!isDryRun && aiModeEnabled && aiSettings.activationMode === world_info_activation_mode.ai_only && aiVectoredEntries.length > 0) {
         try {
             const vectoredCandidates = await getAIVectoredCandidates(chat, aiVectoredEntries);
-            const aiResults = await runAIWorldInfoSearch({ chat, normalEntries: vectoredCandidates, maxOutputTokens: aiSettings.maxOutputTokens });
+            const aiResults = await runAIWorldInfoSearchWithRetry({ chat, normalEntries: vectoredCandidates, maxOutputTokens: aiSettings.maxOutputTokens });
             const matchedEntries = aiResults.map(result => {
                 const entry = vectoredCandidates.find(candidate => candidate.uid === result.uid && candidate.world === result.world);
                 if (!entry) {
@@ -5553,7 +5584,7 @@ export async function checkWorldInfo(chat, maxContext, isDryRun, globalScanData 
             // Only AI (Vectored) entries that were keyword-triggered go through the AI filter.
             if (vectoredAIKeywordEntries.length > 0) {
                 try {
-                    const aiResults = await runAIWorldInfoSearch({ chat, normalEntries: vectoredAIKeywordEntries, maxOutputTokens: aiSettings.maxOutputTokens });
+                    const aiResults = await runAIWorldInfoSearchWithRetry({ chat, normalEntries: vectoredAIKeywordEntries, maxOutputTokens: aiSettings.maxOutputTokens });
                     const matchedEntries = aiResults.map(result => {
                         const entry = vectoredAIKeywordEntries.find(candidate => candidate.uid === result.uid && candidate.world === result.world);
                         if (!entry) {

@@ -261,7 +261,7 @@ export function buildPastContextXmlFromChat(chatData, message, pastMessageCount,
 
     return messages.map(({ index, entry }) => {
         const speaker = entry.name || (entry.is_user ? name1 : name2);
-        return `<message index="${index}" speaker="${escapeHtmlAttr(speaker)}">\n${stripTrackerBlocks(entry.mes)}\n</message>`;
+        return `<message index="${index}" speaker="${escapeHtmlAttr(speaker)}">\n${extractInfoBoard(stripTrackerBlocks(entry.mes)).body}\n</message>`;
     }).join('\n\n');
 }
 

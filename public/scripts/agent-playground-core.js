@@ -122,6 +122,18 @@ export function stripTrackerBlocks(text) {
     return cleaned.trim();
 }
 
+function extractInfoBoard(rawText) {
+    const text = String(rawText ?? '');
+    const match = text.match(/(\[Info_Board\][\s\S]*?\[\/Info_Board\])/i);
+    if (!match) {
+        return { infoBoard: '', body: text };
+    }
+
+    const infoBoard = match[1];
+    const body = text.replace(infoBoard, '').trim();
+    return { infoBoard, body };
+}
+
 export function escapeHtmlText(value) {
     return String(value ?? '')
         .replaceAll('&', '&amp;')
@@ -153,12 +165,12 @@ export function uniqueStringList(values) {
 export function getFallbackAssistantText(message, revisionContext = null) {
     const revisionMessage = String(revisionContext?.currentMessage ?? '').trim();
     if (revisionMessage) {
-        return revisionMessage;
+        return extractInfoBoard(revisionMessage).body;
     }
 
     const messageText = String(message?.mes ?? '').trim();
     if (messageText) {
-        return messageText;
+        return extractInfoBoard(messageText).body;
     }
 
     const reasoningText = stripTrackerBlocks(String(message?.extra?.reasoning ?? '')).trim();
@@ -206,7 +218,7 @@ export function buildPastContextXmlFromChat(chatData, message, pastMessageCount,
 
     return messages.map(({ index, entry }) => {
         const speaker = entry.name || (entry.is_user ? userName : characterName);
-        return `<message index="${index}" speaker="${escapeHtmlAttr(speaker)}">\n${stripTrackerBlocks(entry.mes)}\n</message>`;
+        return `<message index="${index}" speaker="${escapeHtmlAttr(speaker)}">\n${extractInfoBoard(stripTrackerBlocks(entry.mes)).body}\n</message>`;
     }).join('\n\n');
 }
 

@@ -278,6 +278,7 @@ import { getSystemMessageByType, initSystemMessages, SAFETY_CHAT, sendSystemMess
 import { event_types, eventSource } from './scripts/events.js';
 import { initAccessibility } from './scripts/a11y.js';
 import { initAgents, runPostAgentsForDraft } from './scripts/agents.js';
+import { initCustomModels } from './scripts/custom-models.js';
 import { applyStreamFadeIn } from './scripts/util/stream-fadein.js';
 import { initDomHandlers } from './scripts/dom-handlers.js';
 import { SimpleMutex } from './scripts/util/SimpleMutex.js';
@@ -765,6 +766,7 @@ async function firstLoadInit() {
     initMacroAutoComplete();
     initWorldInfo();
     initAgents();
+    initCustomModels();
     initHorde();
     initRossMods();
     initStats();

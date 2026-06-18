@@ -29,6 +29,7 @@ import {
     PRE_AGENT_PROMPT_KEY,
     DEFAULT_AGENT_MAX_TOKENS,
     DEFAULT_AGENT_PRIORITY,
+    DEFAULT_AGENT_RETRIES,
     ensureAgentsSettings,
     generateAgentId,
     normalizeAgent,
@@ -77,6 +78,7 @@ function createDefaultAgent() {
         },
         priority: DEFAULT_AGENT_PRIORITY,
         maxTokens: DEFAULT_AGENT_MAX_TOKENS,
+        retries: DEFAULT_AGENT_RETRIES,
     });
 }
 
@@ -358,9 +360,18 @@ function escapeXmlText(value) {
     return String(value ?? '')
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&apos;');
+        .replace(/>/g, '&gt;');
+}
+
+function buildTargetMessageXml(messageText, revisionContext) {
+    const hasPriorPasses = Boolean(revisionContext?.passes?.length);
+    const label = hasPriorPasses ? 'revised_message' : 'current_message';
+    const intro = hasPriorPasses
+        ? 'This is the current target text after previous revision passes. Apply this pass to this version only.'
+        : '';
+    const body = [intro, String(messageText ?? '').trim()].filter(Boolean).join('\n\n');
+
+    return body ? `<${label}>\n${escapeXmlText(body)}\n</${label}>` : '';
 }
 
 function buildRevisionHistoryXml(revisionContext) {
@@ -377,7 +388,7 @@ function buildRevisionHistoryXml(revisionContext) {
     const forbiddenXml = uniqueStringList(revisionContext.forbiddenAddBack).map(item => `\n    <phrase>${escapeXmlText(item)}</phrase>`).join('');
     const notesXml = uniqueStringList(revisionContext.notesForNextPass).map(item => `\n    <note>${escapeXmlText(item)}</note>`).join('');
 
-    return `<revision_history>\n<original_message>\n${escapeXmlText(revisionContext.originalMessage)}\n</original_message>\n<current_message>\n${escapeXmlText(revisionContext.currentMessage)}\n</current_message>\n<previous_passes>\n${passXml}\n</previous_passes>\n<do_not_reintroduce>${forbiddenXml}\n</do_not_reintroduce>\n<notes_for_next_pass>${notesXml}\n</notes_for_next_pass>\n</revision_history>`;
+    return `<revision_history>\n<previous_passes>\n${passXml}\n</previous_passes>\n<do_not_reintroduce>${forbiddenXml}\n</do_not_reintroduce>\n<notes_for_next_pass>${notesXml}\n</notes_for_next_pass>\n</revision_history>`;
 }
 
 function buildAgentContext(agent, { message = null, messageId = null, generationType = '', source = '', revisionContext = null } = {}) {
@@ -394,7 +405,7 @@ function buildAgentContext(agent, { message = null, messageId = null, generation
             ? Number(messageId)
             : Number(chat.indexOf(message));
     const chatXml = agent.inputMode.includeChat ? buildPastContextXml(message, Number(agent.pastMessageCount ?? 0), contextMessageId) : '';
-    const currentMessageXml = mainReply ? `<current_message>\n${mainReply}\n</current_message>` : '';
+    const currentMessageXml = buildTargetMessageXml(mainReply, revisionContext);
     const revisionHistoryXml = buildRevisionHistoryXml(revisionContext);
 
     return {
@@ -489,6 +500,34 @@ async function runAgentCompletion(agent, context) {
     return '';
 }
 
+async function runAgentCompletionWithRetries(agent, context, { validateStructured = false, sourceLabel = 'agent' } = {}) {
+    const retries = Math.max(0, Number(agent?.retries ?? DEFAULT_AGENT_RETRIES) || 0);
+    const maxAttempts = retries + 1;
+    let lastError = null;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+            const result = await runAgentCompletion(agent, context);
+
+            if (validateStructured && agent?.outputMode?.structured && !parseStructuredAgentResult(result)) {
+                throw new Error(`Agent "${agent.name || 'Unnamed Agent'}" produced invalid or incomplete structured output.`);
+            }
+
+            return result;
+        } catch (error) {
+            lastError = error instanceof Error ? error : new Error(String(error ?? 'Unknown agent failure'));
+
+            if (attempt >= maxAttempts) {
+                throw lastError;
+            }
+
+            console.warn(`[Agents] ${sourceLabel} failed for "${agent?.name || 'Unnamed Agent'}" on attempt ${attempt}/${maxAttempts}. Retrying...`, lastError);
+        }
+    }
+
+    throw lastError || new Error(`Failed to run agent "${agent?.name || 'Unnamed Agent'}"`);
+}
+
 async function getAgentGateInfo(message, revisionContext = null) {
     const minTokens = Math.max(0, Number(ensureAgentsSettings().minMessageTokens ?? 0));
     const assistantText = getFallbackAssistantText(message, revisionContext);
@@ -522,7 +561,10 @@ async function runPreAgents(generationType = 'normal') {
     for (const agent of agents) {
         try {
             const context = buildAgentContext(agent, { generationType, source: 'pre' });
-            const result = await runAgentCompletion(agent, context);
+            const result = await runAgentCompletionWithRetries(agent, context, {
+                validateStructured: false,
+                sourceLabel: 'Pre agent',
+            });
             if (!result) {
                 continue;
             }
@@ -724,7 +766,10 @@ async function runPostAgentsForMessage(messageId, generationType = 'normal', sou
 
                 const inputMessage = getFallbackAssistantText(message, revisionContext);
                 const context = buildAgentContext(agent, { message, messageId, generationType, source, revisionContext });
-                const result = await runAgentCompletion(agent, context);
+                const result = await runAgentCompletionWithRetries(agent, context, {
+                    validateStructured: Boolean(agent.outputMode?.structured),
+                    sourceLabel: 'Post agent',
+                });
                 const applyResult = await applyPostAgentResult(agent, messageId, result, { updateDom });
                 const changed = Boolean(applyResult.changed);
                 const parseFailed = Boolean(applyResult.parseFailed);
@@ -816,7 +861,10 @@ async function runSingleAgentAgainstLatestMessage(agentId) {
                 return;
             }
             const context = buildAgentContext(agent, { message, messageId: lastAssistantMessageId, generationType: 'manual', source: 'manual' });
-            const result = await runAgentCompletion(agent, context);
+            const result = await runAgentCompletionWithRetries(agent, context, {
+                validateStructured: false,
+                sourceLabel: 'Agent test',
+            });
             toastr.success(result ? 'Agent test completed.' : 'Agent returned no text.', 'Agents');
         } catch (error) {
             console.error('[Agents] Agent test failed', error);
@@ -936,6 +984,7 @@ function renderAgentCard(agent) {
                     <small class="text_muted">Generation: ${escapeHtmlText(getGenerationTypeLabel(activeGenerationState?.type || 'normal'))}</small>
                     <small class="text_muted">Max tokens: ${escapeHtmlText(agent.maxTokens)}</small>
                     <small class="text_muted">Past messages: ${escapeHtmlText(agent.pastMessageCount)}</small>
+                    <small class="text_muted">Retries: ${escapeHtmlText(agent.retries ?? 0)}</small>
                 </div>
             </div>
         </div>`,
@@ -1051,6 +1100,7 @@ function fillEditor(agent) {
     $('#agents_editor_priority').val(normalized.priority);
     $('#agents_editor_max_tokens').val(normalized.maxTokens);
     $('#agents_editor_past_message_count').val(normalized.pastMessageCount);
+    $('#agents_editor_retries').val(normalized.retries ?? 0);
     $('#agents_editor_only_group_chats').prop('checked', normalized.conditions.onlyGroupChats);
     $('#agents_editor_only_character_chats').prop('checked', normalized.conditions.onlyCharacterChats);
     $('#agents_editor_skip_swipe').prop('checked', normalized.conditions.skipSwipe);
@@ -1160,6 +1210,7 @@ function readEditorAgent() {
             ? DEFAULT_AGENT_MAX_TOKENS
             : Number($('#agents_editor_max_tokens').val()),
         pastMessageCount: Number($('#agents_editor_past_message_count').val() || 3),
+        retries: Number($('#agents_editor_retries').val() || DEFAULT_AGENT_RETRIES),
     });
 }
 

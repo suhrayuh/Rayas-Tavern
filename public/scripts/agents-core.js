@@ -23,6 +23,8 @@ export const DEFAULT_AGENT_PRIORITY = 100;
 export const DEFAULT_MIN_AGENT_MESSAGE_TOKENS = 500;
 export const MIN_AGENT_MAX_TOKENS = 0;
 export const MAX_AGENT_MAX_TOKENS = 16000;
+export const DEFAULT_AGENT_RETRIES = 0;
+export const MAX_AGENT_RETRIES = 10;
 
 export function ensureAgentsSettings() {
     /** @type {any} */
@@ -95,6 +97,7 @@ export function normalizeAgent(rawAgent = {}) {
         },
         priority: DEFAULT_AGENT_PRIORITY,
         maxTokens: DEFAULT_AGENT_MAX_TOKENS,
+        retries: DEFAULT_AGENT_RETRIES,
     };
 
     const phase = ['pre', 'post', 'manual'].includes(String(rawAgent.phase ?? '')) ? String(rawAgent.phase) : defaults.phase;
@@ -144,6 +147,9 @@ export function normalizeAgent(rawAgent = {}) {
         maxTokens: Number.isFinite(Number(rawAgent.maxTokens))
             ? Math.max(MIN_AGENT_MAX_TOKENS, Math.min(MAX_AGENT_MAX_TOKENS, Number(rawAgent.maxTokens)))
             : defaults.maxTokens,
+        retries: Number.isFinite(Number(rawAgent.retries))
+            ? Math.max(0, Math.min(MAX_AGENT_RETRIES, Number(rawAgent.retries)))
+            : defaults.retries,
     };
 }
 
@@ -314,9 +320,18 @@ export function escapeXmlText(value) {
     return String(value ?? '')
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&apos;');
+        .replace(/>/g, '&gt;');
+}
+
+function buildTargetMessageXml(messageText, revisionContext) {
+    const hasPriorPasses = Boolean(revisionContext?.passes?.length);
+    const label = hasPriorPasses ? 'revised_message' : 'current_message';
+    const intro = hasPriorPasses
+        ? 'This is the current target text after previous revision passes. Apply this pass to this version only.'
+        : '';
+    const body = [intro, String(messageText ?? '').trim()].filter(Boolean).join('\n\n');
+
+    return body ? `<${label}>\n${escapeXmlText(body)}\n</${label}>` : '';
 }
 
 export function extractInfoBoard(rawText) {
@@ -374,7 +389,7 @@ export function buildRevisionHistoryXml(revisionContext) {
     const forbiddenXml = uniqueStringList(revisionContext.forbiddenAddBack).map(item => `\n    <phrase>${escapeXmlText(item)}</phrase>`).join('');
     const notesXml = uniqueStringList(revisionContext.notesForNextPass).map(item => `\n    <note>${escapeXmlText(item)}</note>`).join('');
 
-    return `<revision_history>\n<original_message>\n${escapeXmlText(revisionContext.originalMessage)}\n</original_message>\n<current_message>\n${escapeXmlText(revisionContext.currentMessage)}\n</current_message>\n<previous_passes>\n${passXml}\n</previous_passes>\n<do_not_reintroduce>${forbiddenXml}\n</do_not_reintroduce>\n<notes_for_next_pass>${notesXml}\n</notes_for_next_pass>\n</revision_history>`;
+    return `<revision_history>\n<previous_passes>\n${passXml}\n</previous_passes>\n<do_not_reintroduce>${forbiddenXml}\n</do_not_reintroduce>\n<notes_for_next_pass>${notesXml}\n</notes_for_next_pass>\n</revision_history>`;
 }
 
 export function buildAgentContext(agent, { message = null, messageId = null, generationType = '', source = '', revisionContext = null, chatData = chat, character = null, personaDescription = null, worldInfoText = null } = {}) {
@@ -391,7 +406,7 @@ export function buildAgentContext(agent, { message = null, messageId = null, gen
             ? Number(messageId)
             : Number(chatData.indexOf(message));
     const chatXml = agent.inputMode.includeChat ? buildPastContextXmlFromChat(chatData, message, Number(agent.pastMessageCount ?? 0), contextMessageId) : '';
-    const currentMessageXml = mainReply ? `<current_message>\n${mainReply}\n</current_message>` : '';
+    const currentMessageXml = buildTargetMessageXml(mainReply, revisionContext);
     const revisionHistoryXml = buildRevisionHistoryXml(revisionContext);
 
     return {

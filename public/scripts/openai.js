@@ -508,6 +508,7 @@ const default_settings = {
     n: 1,
     bind_preset_to_connection: true,
     extensions: {},
+    promptSnapshots: [],
 };
 
 const oai_settings = structuredClone(default_settings);

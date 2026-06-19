@@ -1109,20 +1109,20 @@ class PromptManager {
     }
 
     /**
-     * Get all saved prompt snapshots from extension_settings.
+     * Get all saved prompt snapshots from serviceSettings.
      * @returns {Array<{id: string, name: string, timestamp: number, characterId: string, serviceType: string, promptOrder: Array}>}
      */
     getSnapshots() {
-        return extension_settings?.promptSnapshots ?? [];
+        return this.serviceSettings?.promptSnapshots ?? [];
     }
 
     /**
-     * Save snapshots array to extension_settings.
+     * Save snapshots array to serviceSettings.
      * @param {Array} snapshots
      */
     saveSnapshots(snapshots) {
-        extension_settings.promptSnapshots = snapshots;
-        saveSettingsDebounced();
+        this.serviceSettings.promptSnapshots = snapshots;
+        this.saveServiceSettings();
     }
 
     /**
@@ -1233,7 +1233,9 @@ class PromptManager {
         // Update the character's prompt order
         this.removePromptOrderForCharacter(this.activeCharacter);
         this.addPromptOrderForCharacter(this.activeCharacter, mergedOrder);
-        
+
+        this.lastAppliedSnapshotId = snapshot.id;
+
         this.saveServiceSettings().then(() => {
             this.render();
             toastr.success(`Snapshot "${snapshot.name}" applied.`, 'Prompt Snapshots');
@@ -1272,23 +1274,54 @@ class PromptManager {
     handleSaveSnapshot = async () => {
         const name = await Popup.show.input('Save Prompt Snapshot', 'Enter a name for this snapshot:');
         if (!name || !name.trim()) return;
-        
-        this.createSnapshot(name.trim());
-        this.renderSnapshotControls();
+
+        const snapshot = this.createSnapshot(name.trim());
+        this.renderSnapshotControls(snapshot.id);
         toastr.success('Snapshot saved.', 'Prompt Snapshots');
     }
 
     /**
-     * Handle loading a snapshot from the UI.
+     * Handle selecting a snapshot from the dropdown.
      */
-    handleLoadSnapshot = () => {
+    handleSnapshotSelectChange = () => {
         const select = document.getElementById(this.configuration.prefix + 'prompt_manager_snapshot_select');
         if (!select || !select.value) {
-            toastr.warning('Please select a snapshot to load.', 'Prompt Snapshots');
+            this.updateSnapshotActionButtons();
             return;
         }
-        
+
         this.applySnapshot(select.value);
+    }
+
+    /**
+     * Handle editing the selected snapshot's name.
+     */
+    handleEditSnapshot = async () => {
+        const select = document.getElementById(this.configuration.prefix + 'prompt_manager_snapshot_select');
+        if (!select || !select.value) {
+            toastr.warning('Please select a snapshot to rename.', 'Prompt Snapshots');
+            return;
+        }
+
+        const snapshots = this.getSnapshots();
+        const snapshot = snapshots.find(s => s.id === select.value);
+        if (!snapshot) return;
+
+        const newName = await Popup.show.input('Rename Snapshot', 'Enter a new name for this snapshot:', snapshot.name);
+        if (!newName || !newName.trim() || newName.trim() === snapshot.name) return;
+
+        let finalName = newName.trim();
+        const existingNames = snapshots.map(s => s.name);
+        let counter = 2;
+        while (existingNames.includes(finalName)) {
+            finalName = `${newName.trim()} (${counter})`;
+            counter++;
+        }
+
+        snapshot.name = finalName;
+        this.saveSnapshots(snapshots);
+        this.renderSnapshotControls(snapshot.id);
+        toastr.success('Snapshot renamed.', 'Prompt Snapshots');
     }
 
     /**
@@ -1308,7 +1341,7 @@ class PromptManager {
             'Delete Snapshot',
             `Are you sure you want to delete "${snapshot.name}"?`
         );
-        
+
         if (confirmed) {
             this.deleteSnapshot(select.value);
             this.renderSnapshotControls();
@@ -1317,27 +1350,29 @@ class PromptManager {
 
     /**
      * Render the snapshot controls in the footer.
+     * @param {string} [selectedSnapshotId] - ID of snapshot to select after rendering
      */
-    renderSnapshotControls() {
+    renderSnapshotControls(selectedSnapshotId = null) {
         const container = document.getElementById(this.configuration.prefix + 'prompt_manager_snapshot_controls');
         if (!container) return;
 
         const snapshots = this.getApplicableSnapshots();
         const select = container.querySelector('select');
-        
+
         if (!select) return;
 
-        // Save current selection
+        // Determine which snapshot should be selected after rendering
         const previousValue = select.value;
-        
+        const targetValue = selectedSnapshotId || previousValue;
+
         // Rebuild options
         select.innerHTML = '';
-        
+
         const defaultOption = document.createElement('option');
         defaultOption.value = '';
         defaultOption.textContent = snapshots.length ? 'Select snapshot...' : 'No snapshots';
         select.appendChild(defaultOption);
-        
+
         snapshots.forEach(snapshot => {
             const option = document.createElement('option');
             option.value = snapshot.id;
@@ -1345,17 +1380,30 @@ class PromptManager {
             select.appendChild(option);
         });
 
-        // Restore selection if still valid
-        if (previousValue && snapshots.some(s => s.id === previousValue)) {
-            select.value = previousValue;
+        // Restore selection if valid
+        if (targetValue && snapshots.some(s => s.id === targetValue)) {
+            select.value = targetValue;
         }
 
-        // Enable/disable buttons based on selection
-        const loadBtn = container.querySelector('.prompt-manager-snapshot-load');
+        this.updateSnapshotActionButtons();
+    }
+
+    /**
+     * Enable/disable snapshot action buttons based on selection.
+     */
+    updateSnapshotActionButtons() {
+        const container = document.getElementById(this.configuration.prefix + 'prompt_manager_snapshot_controls');
+        if (!container) return;
+
+        const select = container.querySelector('select');
+        const hasSelection = select && select.value;
+        const hasSnapshots = this.getApplicableSnapshots().length > 0;
+
+        const editBtn = container.querySelector('.prompt-manager-snapshot-edit');
         const deleteBtn = container.querySelector('.prompt-manager-snapshot-delete');
-        
-        if (loadBtn) loadBtn.disabled = !snapshots.length;
-        if (deleteBtn) deleteBtn.disabled = !snapshots.length;
+
+        if (editBtn) editBtn.disabled = !hasSelection;
+        if (deleteBtn) deleteBtn.disabled = !hasSelection;
     }
 
     /**
@@ -1904,10 +1952,10 @@ class PromptManager {
             rangeBlockDiv.querySelector('#prompt-manager-reset-character').addEventListener('click', this.handleCharacterReset);
 
             const footerDiv = rangeBlockDiv.querySelector(`.${this.configuration.prefix}prompt_manager_footer`);
-            footerDiv.querySelector('.menu_button:nth-child(2)').addEventListener('click', this.handleAppendPrompt);
-            footerDiv.querySelector('.caution').addEventListener('click', this.handleDeletePrompt);
-            footerDiv.querySelector('.menu_button:last-child').addEventListener('click', this.handleNewPrompt);
-            footerDiv.querySelector('select').selectedIndex = selectedPromptIndex;
+            footerDiv.querySelector('.prompt-manager-append-prompt').addEventListener('click', this.handleAppendPrompt);
+            footerDiv.querySelector('.prompt-manager-delete-prompt').addEventListener('click', this.handleDeletePrompt);
+            footerDiv.querySelector('.prompt-manager-new-prompt').addEventListener('click', this.handleNewPrompt);
+            footerDiv.querySelector(`#${this.configuration.prefix}prompt_manager_footer_append_prompt`).selectedIndex = selectedPromptIndex;
 
             // Add prompt export dialogue and options
             footerDiv.querySelector('#prompt-manager-import').addEventListener('click', this.handleImport);
@@ -1917,9 +1965,10 @@ class PromptManager {
             const snapshotControls = footerDiv.querySelector('.prompt-manager-snapshot-controls');
             if (snapshotControls) {
                 snapshotControls.querySelector('.prompt-manager-snapshot-save')?.addEventListener('click', this.handleSaveSnapshot);
-                snapshotControls.querySelector('.prompt-manager-snapshot-load')?.addEventListener('click', this.handleLoadSnapshot);
+                snapshotControls.querySelector('.prompt-manager-snapshot-edit')?.addEventListener('click', this.handleEditSnapshot);
                 snapshotControls.querySelector('.prompt-manager-snapshot-delete')?.addEventListener('click', this.handleDeleteSnapshot);
-                this.renderSnapshotControls();
+                snapshotControls.querySelector('select')?.addEventListener('change', this.handleSnapshotSelectChange);
+                this.renderSnapshotControls(this.lastAppliedSnapshotId);
             }
         }
     }

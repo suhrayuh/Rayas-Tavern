@@ -1,11 +1,11 @@
 <div class="{{prefix}}prompt_manager_footer">
-    <div class="prompt-manager-snapshot-controls flex-container flexFlowColumn gap5px">
+    <div id="{{prefix}}prompt_manager_snapshot_controls" class="prompt-manager-snapshot-controls flex-container flexFlowColumn gap5px">
         <div class="flex-container gap5px alignitemscenter">
             <select id="{{prefix}}prompt_manager_snapshot_select" class="text_pole flex1">
                 <option value="">No snapshots</option>
             </select>
             <button class="menu_button fa-solid fa-camera prompt-manager-snapshot-save" title="Save snapshot" data-i18n="[title]Save snapshot"></button>
-            <button class="menu_button fa-solid fa-upload prompt-manager-snapshot-load" title="Load snapshot" data-i18n="[title]Load snapshot" disabled></button>
+            <button class="menu_button fa-solid fa-pencil prompt-manager-snapshot-edit" title="Rename snapshot" data-i18n="[title]Rename snapshot" disabled></button>
             <button class="menu_button caution fa-solid fa-trash prompt-manager-snapshot-delete" title="Delete snapshot" data-i18n="[title]Delete snapshot" disabled></button>
         </div>
     </div>
@@ -13,11 +13,11 @@
         <select id="{{prefix}}prompt_manager_footer_append_prompt" class="text_pole flex1" name="append-prompt">
             {{{promptsHtml}}}
         </select>
-        <a class="menu_button fa-chain fa-solid fa-fw" title="Insert prompt" data-i18n="[title]Insert prompt"></a>
-        <a class="caution menu_button fa-x fa-solid fa-fw" title="Delete prompt" data-i18n="[title]Delete prompt"></a>
+        <a class="menu_button fa-chain fa-solid fa-fw prompt-manager-append-prompt" title="Insert prompt" data-i18n="[title]Insert prompt"></a>
+        <a class="caution menu_button fa-x fa-solid fa-fw prompt-manager-delete-prompt" title="Delete prompt" data-i18n="[title]Delete prompt"></a>
         <a class="menu_button fa-file-import fa-solid fa-fw" id="prompt-manager-import" title="Import a prompt list" data-i18n="[title]Import a prompt list"></a>
         <a class="menu_button fa-file-export fa-solid fa-fw" id="prompt-manager-export" title="Export this prompt list" data-i18n="[title]Export this prompt list"></a>
         <a class="menu_button fa-undo fa-solid fa-fw" id="prompt-manager-reset-character" title="Reset current character" data-i18n="[title]Reset current character"></a>
-        <a class="menu_button fa-plus-square fa-solid fa-fw" title="New prompt" data-i18n="[title]New prompt"></a>
+        <a class="menu_button fa-plus-square fa-solid fa-fw prompt-manager-new-prompt" title="New prompt" data-i18n="[title]New prompt"></a>
     </div>
 </div>

@@ -28,7 +28,6 @@ import { getSortableDelay } from './utils.js';
 import {
     PRE_AGENT_PROMPT_KEY,
     DEFAULT_AGENT_MAX_TOKENS,
-    DEFAULT_AGENT_PRIORITY,
     DEFAULT_AGENT_RETRIES,
     ensureAgentsSettings,
     generateAgentId,
@@ -500,17 +499,31 @@ async function runAgentCompletion(agent, context) {
     return '';
 }
 
-async function runAgentCompletionWithRetries(agent, context, { validateStructured = false, sourceLabel = 'agent' } = {}) {
+async function runAgentCompletionWithRetries(agent, context, { validateStructured = false, validateMinTokens = false, sourceLabel = 'agent' } = {}) {
     const retries = Math.max(0, Number(agent?.retries ?? DEFAULT_AGENT_RETRIES) || 0);
     const maxAttempts = retries + 1;
     let lastError = null;
+    const minTokens = Math.max(0, Number(ensureAgentsSettings().minMessageTokens ?? 0));
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         try {
             const result = await runAgentCompletion(agent, context);
+            const structured = validateStructured && agent?.outputMode?.structured ? parseStructuredAgentResult(result) : null;
 
-            if (validateStructured && agent?.outputMode?.structured && !parseStructuredAgentResult(result)) {
+            if (validateStructured && agent?.outputMode?.structured && !structured) {
                 throw new Error(`Agent "${agent.name || 'Unnamed Agent'}" produced invalid or incomplete structured output.`);
+            }
+
+            if (validateMinTokens && minTokens > 0) {
+                const tokenCandidate = structured && ['rewrite', 'append'].includes(agent?.outputMode?.type)
+                    ? String(structured.revised_message ?? '')
+                    : String(result ?? '');
+                const tokenText = extractInfoBoard(decodeHtmlEntities(tokenCandidate)).body.trim();
+                const tokenCount = await getTokenCountAsync(tokenText, 0);
+
+                if (tokenCount < minTokens) {
+                    throw new Error(`Agent "${agent.name || 'Unnamed Agent'}" returned only ${tokenCount} tokens, below the minimum of ${minTokens}.`);
+                }
             }
 
             return result;
@@ -522,6 +535,7 @@ async function runAgentCompletionWithRetries(agent, context, { validateStructure
             }
 
             console.warn(`[Agents] ${sourceLabel} failed for "${agent?.name || 'Unnamed Agent'}" on attempt ${attempt}/${maxAttempts}. Retrying...`, lastError);
+            toastr.warning(`Attempt ${attempt}/${maxAttempts} failed for "${agent?.name || 'Unnamed Agent'}". Retrying...\n${lastError.message}`, 'Agents');
         }
     }
 
@@ -563,6 +577,7 @@ async function runPreAgents(generationType = 'normal') {
             const context = buildAgentContext(agent, { generationType, source: 'pre' });
             const result = await runAgentCompletionWithRetries(agent, context, {
                 validateStructured: false,
+                validateMinTokens: true,
                 sourceLabel: 'Pre agent',
             });
             if (!result) {
@@ -741,7 +756,7 @@ async function runPostAgentsForMessage(messageId, generationType = 'normal', sou
         return false;
     }
 
-    const shouldToastProgress = source === 'draft' && agents.length > 0;
+    const shouldToastProgress = (source === 'draft' || source === 'manual') && agents.length > 0;
     let progressToast = null;
 
     isRunningPostAgents = true;
@@ -768,6 +783,7 @@ async function runPostAgentsForMessage(messageId, generationType = 'normal', sou
                 const context = buildAgentContext(agent, { message, messageId, generationType, source, revisionContext });
                 const result = await runAgentCompletionWithRetries(agent, context, {
                     validateStructured: Boolean(agent.outputMode?.structured),
+                    validateMinTokens: true,
                     sourceLabel: 'Post agent',
                 });
                 const applyResult = await applyPostAgentResult(agent, messageId, result, { updateDom });
@@ -863,6 +879,7 @@ async function runSingleAgentAgainstLatestMessage(agentId) {
             const context = buildAgentContext(agent, { message, messageId: lastAssistantMessageId, generationType: 'manual', source: 'manual' });
             const result = await runAgentCompletionWithRetries(agent, context, {
                 validateStructured: false,
+                validateMinTokens: true,
                 sourceLabel: 'Agent test',
             });
             toastr.success(result ? 'Agent test completed.' : 'Agent returned no text.', 'Agents');
@@ -963,7 +980,6 @@ function renderAgentCard(agent) {
                     </div>
                 </div>
                 <div class="flex-container alignitemscenter gap10px flexWrap justifyEnd agents-card-header-right">
-                    <small class="agents-order-label text_muted">#${escapeHtmlText(agent.priority)}</small>
                     <label class="checkbox_label flexNoGap agents-card-enabled-toggle">
                         <input class="agents-card-enabled" type="checkbox" ${agent.enabled ? 'checked' : ''}>
                         <span>${agent.enabled ? 'Enabled' : 'Disabled'}</span>
@@ -1097,7 +1113,6 @@ function fillEditor(agent) {
     $('#agents_editor_output_role').val(normalized.outputMode.role);
     $('#agents_editor_store_key').val(normalized.outputMode.storeKey);
     $('#agents_editor_output_structured').prop('checked', normalized.outputMode.structured);
-    $('#agents_editor_priority').val(normalized.priority);
     $('#agents_editor_max_tokens').val(normalized.maxTokens);
     $('#agents_editor_past_message_count').val(normalized.pastMessageCount);
     $('#agents_editor_retries').val(normalized.retries ?? 0);
@@ -1205,7 +1220,6 @@ function readEditorAgent() {
             skipImpersonate: $('#agents_editor_skip_impersonate').prop('checked'),
             skipQuiet: $('#agents_editor_skip_quiet').prop('checked'),
         },
-        priority: Number($('#agents_editor_priority').val() || DEFAULT_AGENT_PRIORITY),
         maxTokens: $('#agents_editor_max_tokens').val() === ''
             ? DEFAULT_AGENT_MAX_TOKENS
             : Number($('#agents_editor_max_tokens').val()),

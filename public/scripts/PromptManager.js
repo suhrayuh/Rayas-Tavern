@@ -1109,6 +1109,256 @@ class PromptManager {
     }
 
     /**
+     * Get all saved prompt snapshots from extension_settings.
+     * @returns {Array<{id: string, name: string, timestamp: number, characterId: string, serviceType: string, promptOrder: Array}>}
+     */
+    getSnapshots() {
+        return extension_settings?.promptSnapshots ?? [];
+    }
+
+    /**
+     * Save snapshots array to extension_settings.
+     * @param {Array} snapshots
+     */
+    saveSnapshots(snapshots) {
+        extension_settings.promptSnapshots = snapshots;
+        saveSettingsDebounced();
+    }
+
+    /**
+     * Get the current character ID for snapshot purposes.
+     * @returns {string}
+     */
+    getSnapshotCharacterId() {
+        if ('global' === this.configuration.promptOrder.strategy) {
+            return 'global';
+        }
+        return this.activeCharacter?.id ? String(this.activeCharacter.id) : 'global';
+    }
+
+    /**
+     * Serialize the current prompt order state for snapshotting.
+     * @returns {Array<{identifier: string, enabled: boolean}>}
+     */
+    getCurrentSnapshotState() {
+        const promptOrder = this.getPromptOrderForCharacter(this.activeCharacter);
+        return JSON.parse(JSON.stringify(promptOrder));
+    }
+
+    /**
+     * Create a new snapshot of the current prompt state.
+     * @param {string} name - User-defined snapshot name
+     * @returns {Object} The created snapshot
+     */
+    createSnapshot(name) {
+        const snapshots = this.getSnapshots();
+        const characterId = this.getSnapshotCharacterId();
+        const serviceType = this.configuration.serviceType || 'openai';
+        
+        // Auto-append number if name collision
+        let finalName = name;
+        const existingNames = snapshots.map(s => s.name);
+        let counter = 2;
+        while (existingNames.includes(finalName)) {
+            finalName = `${name} (${counter})`;
+            counter++;
+        }
+
+        const snapshot = {
+            id: uuidv4(),
+            name: finalName,
+            timestamp: Date.now(),
+            characterId,
+            serviceType,
+            promptOrder: this.getCurrentSnapshotState(),
+        };
+
+        snapshots.push(snapshot);
+        this.saveSnapshots(snapshots);
+        
+        this.log(`Snapshot created: "${finalName}" for ${characterId}`);
+        return snapshot;
+    }
+
+    /**
+     * Get snapshots applicable to the current character/service.
+     * @returns {Array}
+     */
+    getApplicableSnapshots() {
+        const characterId = this.getSnapshotCharacterId();
+        const serviceType = this.configuration.serviceType || 'openai';
+        const snapshots = this.getSnapshots();
+        
+        return snapshots.filter(s => 
+            s.characterId === characterId && 
+            s.serviceType === serviceType
+        );
+    }
+
+    /**
+     * Apply a snapshot to the current character's prompt order.
+     * @param {string} snapshotId
+     * @returns {boolean} Success
+     */
+    applySnapshot(snapshotId) {
+        const snapshot = this.getSnapshots().find(s => s.id === snapshotId);
+        if (!snapshot) {
+            toastr.warning('Snapshot not found.', 'Prompt Snapshots');
+            return false;
+        }
+
+        const currentPromptOrder = this.getPromptOrderForCharacter(this.activeCharacter);
+        const currentIdentifiers = new Set(currentPromptOrder.map(p => p.identifier));
+        
+        // Only apply states for prompts that still exist
+        const applicableOrder = snapshot.promptOrder.filter(entry => 
+            currentIdentifiers.has(entry.identifier)
+        );
+
+        if (applicableOrder.length === 0) {
+            toastr.warning('No matching prompts found in snapshot.', 'Prompt Snapshots');
+            return false;
+        }
+
+        // Merge: keep current order, but update enabled states from snapshot
+        // For prompts in snapshot, use snapshot's enabled state
+        // For prompts not in snapshot, leave them as-is
+        const snapshotMap = new Map(applicableOrder.map(p => [p.identifier, p.enabled]));
+        
+        const mergedOrder = currentPromptOrder.map(entry => ({
+            ...entry,
+            enabled: snapshotMap.has(entry.identifier) ? snapshotMap.get(entry.identifier) : entry.enabled,
+        }));
+
+        // Update the character's prompt order
+        this.removePromptOrderForCharacter(this.activeCharacter);
+        this.addPromptOrderForCharacter(this.activeCharacter, mergedOrder);
+        
+        this.saveServiceSettings().then(() => {
+            this.render();
+            toastr.success(`Snapshot "${snapshot.name}" applied.`, 'Prompt Snapshots');
+        });
+
+        this.log(`Snapshot applied: "${snapshot.name}"`);
+        return true;
+    }
+
+    /**
+     * Delete a snapshot by ID.
+     * @param {string} snapshotId
+     * @returns {boolean} Success
+     */
+    deleteSnapshot(snapshotId) {
+        const snapshots = this.getSnapshots();
+        const index = snapshots.findIndex(s => s.id === snapshotId);
+        
+        if (index === -1) {
+            toastr.warning('Snapshot not found.', 'Prompt Snapshots');
+            return false;
+        }
+
+        const deletedName = snapshots[index].name;
+        snapshots.splice(index, 1);
+        this.saveSnapshots(snapshots);
+        
+        this.log(`Snapshot deleted: "${deletedName}"`);
+        toastr.success(`Snapshot "${deletedName}" deleted.`, 'Prompt Snapshots');
+        return true;
+    }
+
+    /**
+     * Handle saving a new snapshot from the UI.
+     */
+    handleSaveSnapshot = async () => {
+        const name = await Popup.show.input('Save Prompt Snapshot', 'Enter a name for this snapshot:');
+        if (!name || !name.trim()) return;
+        
+        this.createSnapshot(name.trim());
+        this.renderSnapshotControls();
+        toastr.success('Snapshot saved.', 'Prompt Snapshots');
+    }
+
+    /**
+     * Handle loading a snapshot from the UI.
+     */
+    handleLoadSnapshot = () => {
+        const select = document.getElementById(this.configuration.prefix + 'prompt_manager_snapshot_select');
+        if (!select || !select.value) {
+            toastr.warning('Please select a snapshot to load.', 'Prompt Snapshots');
+            return;
+        }
+        
+        this.applySnapshot(select.value);
+    }
+
+    /**
+     * Handle deleting a snapshot from the UI.
+     */
+    handleDeleteSnapshot = async () => {
+        const select = document.getElementById(this.configuration.prefix + 'prompt_manager_snapshot_select');
+        if (!select || !select.value) {
+            toastr.warning('Please select a snapshot to delete.', 'Prompt Snapshots');
+            return;
+        }
+
+        const snapshot = this.getSnapshots().find(s => s.id === select.value);
+        if (!snapshot) return;
+
+        const confirmed = await Popup.show.confirm(
+            'Delete Snapshot',
+            `Are you sure you want to delete "${snapshot.name}"?`
+        );
+        
+        if (confirmed) {
+            this.deleteSnapshot(select.value);
+            this.renderSnapshotControls();
+        }
+    }
+
+    /**
+     * Render the snapshot controls in the footer.
+     */
+    renderSnapshotControls() {
+        const container = document.getElementById(this.configuration.prefix + 'prompt_manager_snapshot_controls');
+        if (!container) return;
+
+        const snapshots = this.getApplicableSnapshots();
+        const select = container.querySelector('select');
+        
+        if (!select) return;
+
+        // Save current selection
+        const previousValue = select.value;
+        
+        // Rebuild options
+        select.innerHTML = '';
+        
+        const defaultOption = document.createElement('option');
+        defaultOption.value = '';
+        defaultOption.textContent = snapshots.length ? 'Select snapshot...' : 'No snapshots';
+        select.appendChild(defaultOption);
+        
+        snapshots.forEach(snapshot => {
+            const option = document.createElement('option');
+            option.value = snapshot.id;
+            option.textContent = snapshot.name;
+            select.appendChild(option);
+        });
+
+        // Restore selection if still valid
+        if (previousValue && snapshots.some(s => s.id === previousValue)) {
+            select.value = previousValue;
+        }
+
+        // Enable/disable buttons based on selection
+        const loadBtn = container.querySelector('.prompt-manager-snapshot-load');
+        const deleteBtn = container.querySelector('.prompt-manager-snapshot-delete');
+        
+        if (loadBtn) loadBtn.disabled = !snapshots.length;
+        if (deleteBtn) deleteBtn.disabled = !snapshots.length;
+    }
+
+    /**
      * Check whether a prompt can be toggled on or off.
      * @param {Prompt} prompt - The prompt to check.
      * @returns {boolean} True if the prompt can be deleted, false otherwise.
@@ -1662,6 +1912,15 @@ class PromptManager {
             // Add prompt export dialogue and options
             footerDiv.querySelector('#prompt-manager-import').addEventListener('click', this.handleImport);
             footerDiv.querySelector('#prompt-manager-export').addEventListener('click', this.handleFullExport);
+
+            // Add snapshot controls
+            const snapshotControls = footerDiv.querySelector('.prompt-manager-snapshot-controls');
+            if (snapshotControls) {
+                snapshotControls.querySelector('.prompt-manager-snapshot-save')?.addEventListener('click', this.handleSaveSnapshot);
+                snapshotControls.querySelector('.prompt-manager-snapshot-load')?.addEventListener('click', this.handleLoadSnapshot);
+                snapshotControls.querySelector('.prompt-manager-snapshot-delete')?.addEventListener('click', this.handleDeleteSnapshot);
+                this.renderSnapshotControls();
+            }
         }
     }
 

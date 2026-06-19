@@ -253,11 +253,45 @@
 
 #completion_prompt_manager .completion_prompt_manager_footer {
     display: flex;
-    flex-direction: row;
+    flex-direction: column;
     justify-content: flex-end;
-    gap: 0.25em;
+    gap: 0.5em;
     padding: 0 0.25em;
     width: 100%
+}
+
+#completion_prompt_manager .completion_prompt_manager_footer .prompt-manager-snapshot-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25em;
+    width: 100%;
+}
+
+#completion_prompt_manager .completion_prompt_manager_footer .prompt-manager-snapshot-controls .flex-container {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 0.25em;
+    width: 100%;
+}
+
+#completion_prompt_manager .completion_prompt_manager_footer .prompt-manager-snapshot-controls select {
+    flex: 1;
+    font-size: 1em;
+}
+
+#completion_prompt_manager .completion_prompt_manager_footer .prompt-manager-snapshot-controls button {
+    font-size: 12px;
+    min-width: 28px;
+    min-height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#completion_prompt_manager .completion_prompt_manager_footer .prompt-manager-snapshot-controls button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
 }
 
 #completion_prompt_manager .completion_prompt_manager_footer a {

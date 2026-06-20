@@ -462,6 +462,8 @@ let scrollLock = false;
 export let abortStatusCheck = new AbortController();
 export let charDragDropHandler = null;
 export let chatDragDropHandler = null;
+let activeSaveController = null;
+let saveGenerationCounter = 0;
 
 /** @type {debounce_timeout} The debounce timeout used for chat/settings save. debounce_timeout.long: 1.000 ms */
 export const DEFAULT_SAVE_EDIT_TIMEOUT = debounce_timeout.relaxed;
@@ -8244,6 +8246,14 @@ export async function saveSettings(loopCounter = 0) {
         TempResponseLength.restore(null);
     }
 
+    // Abort any in-flight save so we don't stack multiple saves
+    if (activeSaveController) {
+        activeSaveController.abort();
+    }
+    activeSaveController = new AbortController();
+    const signal = activeSaveController.signal;
+    const generation = ++saveGenerationCounter;
+
     const payload = {
         firstRun: firstRun,
         accountStorage: accountStorage.getState(),
@@ -8271,24 +8281,59 @@ export async function saveSettings(loopCounter = 0) {
         selected_proxy: selected_proxy,
     };
 
-    try {
-        const saveSettingsRequest = await compressRequest({
-            method: 'POST',
-            headers: getRequestHeaders(),
-            body: JSON.stringify(payload),
-            cache: 'no-cache',
-        });
-        const result = await fetch('/api/settings/save', saveSettingsRequest);
+    const MAX_SAVE_RETRIES = 2;
+    for (let attempt = 0; attempt <= MAX_SAVE_RETRIES; attempt++) {
+        try {
+            if (signal.aborted) return;
+            const saveSettingsRequest = await compressRequest({
+                method: 'POST',
+                headers: getRequestHeaders(),
+                body: JSON.stringify(payload),
+                cache: 'no-cache',
+                signal,
+            });
+            const result = await fetch('/api/settings/save', saveSettingsRequest);
 
-        if (!result.ok) {
-            throw new Error(`Failed to save settings: ${result.statusText}`);
+            if (signal.aborted) return;
+            if (!result.ok) {
+                throw new Error(`Failed to save settings: ${result.statusText}`);
+            }
+
+            settings = payload;
+            await eventSource.emit(event_types.SETTINGS_UPDATED);
+            return;
+        } catch (error) {
+            if (signal.aborted) {
+                // Superseded by a newer save — no toast needed
+                if (generation === saveGenerationCounter) {
+                    console.warn('Save aborted (transient):', error.message);
+                }
+                return;
+            }
+
+            // AbortError from AbortController (not superseded) — retry once
+            if (error.name === 'AbortError') {
+                console.warn('Save request aborted unexpectedly, retrying...', error.message);
+                if (attempt < MAX_SAVE_RETRIES) {
+                    await new Promise(r => setTimeout(r, 500));
+                    continue;
+                }
+            }
+
+            // Network/type errors — retry with backoff
+            if (!error.response && (error instanceof TypeError || error.name === 'AbortError') && attempt < MAX_SAVE_RETRIES) {
+                console.warn(`Save attempt ${attempt + 1} failed, retrying...`, error.message);
+                await new Promise(r => setTimeout(r, 500 * (attempt + 1)));
+                continue;
+            }
+
+            // Final failure — only show toast if this is still the current save
+            if (generation === saveGenerationCounter) {
+                console.error('Error saving settings:', error);
+                toastr.error(t`Check the server connection and reload the page to prevent data loss.`, t`Settings could not be saved`);
+            }
+            return;
         }
-
-        settings = payload;
-        await eventSource.emit(event_types.SETTINGS_UPDATED);
-    } catch (error) {
-        console.error('Error saving settings:', error);
-        toastr.error(t`Check the server connection and reload the page to prevent data loss.`, t`Settings could not be saved`);
     }
 }
 
@@ -12773,6 +12818,48 @@ jQuery(async function () {
         if (isChatSaving || this_edit_mes_id >= 0) {
             e.preventDefault();
             e.returnValue = true;
+        }
+
+        // Final best-effort settings save on tab close using keepalive
+        if (settingsReady) {
+            try {
+                const payload = JSON.stringify({
+                    firstRun: firstRun,
+                    accountStorage: accountStorage.getState(),
+                    currentVersion: currentVersion,
+                    username: name1,
+                    active_character: active_character,
+                    active_group: active_group,
+                    user_avatar: user_avatar,
+                    amount_gen: amount_gen,
+                    max_context: max_context,
+                    main_api: main_api,
+                    world_info_settings: getWorldInfoSettings(),
+                    textgenerationwebui_settings: textgen_settings,
+                    swipes: swipes,
+                    horde_settings: horde_settings,
+                    power_user: power_user,
+                    extension_settings: extension_settings,
+                    tags: tags,
+                    tag_map: tag_map,
+                    nai_settings: nai_settings,
+                    kai_settings: kai_settings,
+                    oai_settings: oai_settings,
+                    background: background_settings,
+                    proxies: proxies,
+                    selected_proxy: selected_proxy,
+                });
+                const headers = getRequestHeaders();
+                const blob = new Blob([payload], { type: 'application/json' });
+                fetch('/api/settings/save', {
+                    method: 'POST',
+                    headers,
+                    body: blob,
+                    keepalive: true,
+                }).catch(() => {});
+            } catch (_e) {
+                // Best-effort — ignore failures during unload
+            }
         }
     });
 });

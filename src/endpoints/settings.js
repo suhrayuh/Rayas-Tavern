@@ -218,6 +218,10 @@ router.post('/save', function (request, response) {
 
         response.send({ result: 'ok' });
     } catch (err) {
+        if (request.aborted) {
+            // Client disconnected (tab close, navigation, or superseded save) — not a real error
+            return;
+        }
         console.error(err);
         response.send(err);
     }

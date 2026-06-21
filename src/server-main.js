@@ -469,6 +469,26 @@ async function postSetupTasks(result) {
 }
 
 /**
+ * Silences body-parser abort errors (BadRequestError: request aborted) that occur
+ * when the client disconnects before the POST body finishes streaming.
+ * These are noise — the client already moved on. Only affects global error handlers.
+ */
+function applyAbortErrorSuppressor() {
+    // Must be an Express error handler (4-arg signature) registered after all routes.
+    // Silences body-parser "request aborted" errors when the client disconnects
+    // before the POST body finishes streaming (common on mobile during startup).
+    app.use((err, _req, res, next) => {
+        if (err?.message === 'request aborted') {
+            if (!res.headersSent) {
+                res.status(499).end(); // 499 = client closed request (nginx convention)
+            }
+            return;
+        }
+        next(err);
+    });
+}
+
+/**
  * Registers a not-found error response if a not-found error page exists. Should only be called after all other middlewares have been registered.
  */
 function apply404Middleware() {
@@ -504,6 +524,7 @@ initUserStorage(globalThis.DATA_ROOT)
     .then(migratePublicOverrides)
     .then(verifySecuritySettings)
     .then(preSetupTasks)
+    .then(applyAbortErrorSuppressor)
     .then(apply404Middleware)
     .then(() => new ServerStartup(app, cliArgs).start())
     .then(postSetupTasks);

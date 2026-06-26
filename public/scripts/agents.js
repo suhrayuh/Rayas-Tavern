@@ -42,6 +42,7 @@ const POST_AGENTS_FINISHED_EVENT = 'rayas_agents_post_finished';
 
 let activeGenerationState = null;
 let isRunningPostAgents = false;
+let agentAbortController = null;
 
 function createDefaultAgent() {
     return normalizeAgent({
@@ -470,7 +471,7 @@ async function buildAgentPrompt(agent, context) {
     return [basePrompt, ...sections.filter(Boolean)].filter(Boolean).join('\n\n');
 }
 
-async function runAgentCompletion(agent, context) {
+async function runAgentCompletion(agent, context, signal = null) {
     const profileId = getResolvedProfileId(agent);
     if (!profileId) {
         throw new Error(`No connection profile selected for agent "${agent.name || 'Unnamed Agent'}"`);
@@ -485,6 +486,7 @@ async function runAgentCompletion(agent, context) {
     const response = await ConnectionManagerRequestService.sendRequest(profileId, prompt, maxTokens, {
         stream: false,
         extractData: true,
+        signal,
     });
 
     if (typeof response === 'string') {
@@ -499,15 +501,19 @@ async function runAgentCompletion(agent, context) {
     return '';
 }
 
-async function runAgentCompletionWithRetries(agent, context, { validateStructured = false, validateMinTokens = false, sourceLabel = 'agent' } = {}) {
+async function runAgentCompletionWithRetries(agent, context, { validateStructured = false, validateMinTokens = false, sourceLabel = 'agent', signal = null } = {}) {
     const retries = Math.max(0, Number(agent?.retries ?? DEFAULT_AGENT_RETRIES) || 0);
     const maxAttempts = retries + 1;
     let lastError = null;
     const minTokens = Math.max(0, Number(ensureAgentsSettings().minMessageTokens ?? 0));
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        if (signal?.aborted) {
+            throw new DOMException('Agent pipeline was cancelled', 'AbortError');
+        }
+
         try {
-            const result = await runAgentCompletion(agent, context);
+            const result = await runAgentCompletion(agent, context, signal);
             const structured = validateStructured && agent?.outputMode?.structured ? parseStructuredAgentResult(result) : null;
 
             if (validateStructured && agent?.outputMode?.structured && !structured) {
@@ -528,6 +534,10 @@ async function runAgentCompletionWithRetries(agent, context, { validateStructure
 
             return result;
         } catch (error) {
+            if (signal?.aborted) {
+                throw new DOMException('Agent pipeline was cancelled', 'AbortError');
+            }
+
             lastError = error instanceof Error ? error : new Error(String(error ?? 'Unknown agent failure'));
 
             if (attempt >= maxAttempts) {
@@ -564,21 +574,30 @@ async function getAgentGateInfo(message, revisionContext = null) {
 async function runPreAgents(generationType = 'normal') {
     clearPreAgentInjection();
 
+    agentAbortController = new AbortController();
+    const signal = agentAbortController.signal;
+
     const agents = getEnabledAgentsByPhase('pre')
         .filter(agent => agent.outputMode.type === 'inject')
         .filter(agent => shouldRunAgent(agent, generationType, 'pre'));
     if (!agents.length) {
+        agentAbortController = null;
         return;
     }
 
     const parts = [];
     for (const agent of agents) {
+        if (signal.aborted) {
+            break;
+        }
+
         try {
             const context = buildAgentContext(agent, { generationType, source: 'pre' });
             const result = await runAgentCompletionWithRetries(agent, context, {
                 validateStructured: false,
                 validateMinTokens: true,
                 sourceLabel: 'Pre agent',
+                signal,
             });
             if (!result) {
                 continue;
@@ -586,10 +605,15 @@ async function runPreAgents(generationType = 'normal') {
 
             parts.push(`### ${agent.name || 'Agent'}\n${result}`);
         } catch (error) {
+            if (error instanceof DOMException && error.name === 'AbortError') {
+                break;
+            }
             console.error('[Agents] Pre agent failed', agent, error);
             toastr.error(String(error?.message || error || 'Failed to run pre agent'), 'Agents');
         }
     }
+
+    agentAbortController = null;
 
     if (!parts.length) {
         return;
@@ -759,6 +783,9 @@ async function runPostAgentsForMessage(messageId, generationType = 'normal', sou
     const shouldToastProgress = (source === 'draft' || source === 'manual') && agents.length > 0;
     let progressToast = null;
 
+    agentAbortController = new AbortController();
+    const signal = agentAbortController.signal;
+
     isRunningPostAgents = true;
     let messageChanged = false;
     let compatibilityEventNeeded = false;
@@ -766,6 +793,10 @@ async function runPostAgentsForMessage(messageId, generationType = 'normal', sou
 
     try {
         for (let index = 0; index < agents.length; index++) {
+            if (signal.aborted) {
+                break;
+            }
+
             const agent = agents[index];
 
             try {
@@ -785,6 +816,7 @@ async function runPostAgentsForMessage(messageId, generationType = 'normal', sou
                     validateStructured: Boolean(agent.outputMode?.structured),
                     validateMinTokens: true,
                     sourceLabel: 'Post agent',
+                    signal,
                 });
                 const applyResult = await applyPostAgentResult(agent, messageId, result, { updateDom });
                 const changed = Boolean(applyResult.changed);
@@ -807,9 +839,19 @@ async function runPostAgentsForMessage(messageId, generationType = 'normal', sou
                     compatibilityEventNeeded = true;
                 }
             } catch (error) {
+                if (error instanceof DOMException && error.name === 'AbortError') {
+                    break;
+                }
                 console.error('[Agents] Post agent failed', agent, error);
                 toastr.error(String(error?.message || error || 'Failed to run post agent'), 'Agents');
             }
+        }
+
+        if (signal.aborted) {
+            if (progressToast) {
+                toastr.clear(progressToast);
+            }
+            toastr.warning('Agent processing was cancelled.', 'Agents');
         }
 
         if (progressToast) {
@@ -826,7 +868,7 @@ async function runPostAgentsForMessage(messageId, generationType = 'normal', sou
 
         await emitPostAgentsFinished(messageId, generationType, source, messageChanged);
 
-        if (shouldToastProgress) {
+        if (shouldToastProgress && !signal.aborted) {
             toastr[messageChanged ? 'success' : 'info'](
                 messageChanged
                     ? `Post-processing complete. Final reply revised by ${successfulPasses} agent${successfulPasses === 1 ? '' : 's'}.`
@@ -841,6 +883,7 @@ async function runPostAgentsForMessage(messageId, generationType = 'normal', sou
             toastr.clear(progressToast);
         }
         isRunningPostAgents = false;
+        agentAbortController = null;
     }
 }
 
@@ -1308,6 +1351,16 @@ function onGenerationFinished() {
 function onGenerationStopped() {
     activeGenerationState = null;
     clearPreAgentInjection();
+    stopAgents();
+}
+
+export function stopAgents() {
+    if (agentAbortController) {
+        agentAbortController.abort('Generation stopped by user');
+        agentAbortController = null;
+        return true;
+    }
+    return false;
 }
 
 function escapeHtmlText(value) {

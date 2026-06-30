@@ -4783,6 +4783,24 @@ async function onExportPresetClick() {
     }
 
     await eventSource.emit(event_types.OAI_PRESET_EXPORT_READY, preset);
+
+    // Reorder prompts to match the user's visual arrangement in the UI
+    if (Array.isArray(preset.prompts) && Array.isArray(preset.prompt_order) && preset.prompt_order.length > 0) {
+        const orderEntry = preset.prompt_order.find(entry => entry.character_id === 100001)
+            || preset.prompt_order[preset.prompt_order.length - 1];
+        if (orderEntry && Array.isArray(orderEntry.order)) {
+            const identifierOrder = new Map(orderEntry.order.map((entry, index) => [entry.identifier, index]));
+            preset.prompts.sort((a, b) => {
+                const aIndex = identifierOrder.get(a.identifier);
+                const bIndex = identifierOrder.get(b.identifier);
+                // Prompts not in the order array go to the end
+                const aValid = aIndex !== undefined ? aIndex : Infinity;
+                const bValid = bIndex !== undefined ? bIndex : Infinity;
+                return aValid - bValid;
+            });
+        }
+    }
+
     const presetJsonString = JSON.stringify(preset, null, 4);
     const presetFileName = `${oai_settings.preset_settings_openai}.json`;
     download(presetJsonString, presetFileName, 'application/json');

@@ -254,6 +254,17 @@ function extractConnectionManagerResponseText(response) {
     return '';
 }
 
+function stripThinkingTags(text) {
+    let cleaned = String(text ?? '');
+    //  thinking...</think> blocks (Anthropic-style)
+    cleaned = cleaned.replace(/<anthropic_thinking>[\s\S]*?<\/anthropic_thinking>/gi, '');
+    //  thinking...</think> blocks (OpenAI/DeepSeek-style)
+    cleaned = cleaned.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '');
+    // <thought>...</thought> blocks
+    cleaned = cleaned.replace(/<thought>[\s\S]*?<\/thought>/gi, '');
+    return cleaned.trim();
+}
+
 function extractJSONPayload(text) {
     const value = String(text || '').trim();
     if (!value) {
@@ -445,7 +456,7 @@ async function generateWorldInfoEntrySummaries(entries) {
         responseText = String(extractConnectionManagerResponseText(response) || '').trim();
     }
 
-    const jsonPayload = extractJSONPayload(responseText);
+    const jsonPayload = extractJSONPayload(stripThinkingTags(responseText));
     const parsed = JSON.parse(String(jsonPayload || '{}'));
     const items = Array.isArray(parsed?.summaries) ? parsed.summaries : [];
     const summaries = new Map();
@@ -500,7 +511,7 @@ async function runAIWorldInfoSearch({ chat, normalEntries, maxOutputTokens }) {
         includePreset: false,
     });
     const responseText = extractConnectionManagerResponseText(response);
-    const jsonPayload = extractJSONPayload(responseText);
+    const jsonPayload = extractJSONPayload(stripThinkingTags(responseText));
 
     const parsed = JSON.parse(String(jsonPayload || '{}'));
     const entries = Array.isArray(parsed?.entries) ? parsed.entries : [];

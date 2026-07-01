@@ -256,12 +256,20 @@ function extractConnectionManagerResponseText(response) {
 
 function stripThinkingTags(text) {
     let cleaned = String(text ?? '');
-    //  thinking...</think> blocks (Anthropic-style)
+    // XML-style thinking tags (with angle brackets)
+    cleaned = cleaned.replace(/<think>[\s\S]*?<\/think>/gi, '');
     cleaned = cleaned.replace(/<anthropic_thinking>[\s\S]*?<\/anthropic_thinking>/gi, '');
-    //  thinking...</think> blocks (OpenAI/DeepSeek-style)
     cleaned = cleaned.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '');
-    // <thought>...</thought> blocks
     cleaned = cleaned.replace(/<thought>[\s\S]*?<\/thought>/gi, '');
+    // Plain-text thinking / response markers (no angle brackets)
+    cleaned = cleaned.replace(/anthropic_thinking[\s\S]*?anthropic_response/gi, '');
+    cleaned = cleaned.replace(/anthropic_thinking[\s\S]*$/gi, '');
+    // Strip anything before the first JSON object if a model still adds prose
+    // or non-standard reasoning markers before the payload.
+    const firstBrace = cleaned.indexOf('{');
+    if (firstBrace > 0) {
+        cleaned = cleaned.slice(firstBrace);
+    }
     return cleaned.trim();
 }
 

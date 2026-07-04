@@ -863,6 +863,18 @@ export async function init() {
             acc[fancyName] = !profile.exclude.includes(command);
             return acc;
         }, {});
+
+        // Add additional parameters to the edit settings (no slash commands)
+        if (profile.mode === 'cc') {
+            const extraParams = ['custom-include-body', 'custom-exclude-body', 'custom-include-headers'];
+            for (const param of extraParams) {
+                const fancyName = FANCY_NAMES[param];
+                if (fancyName) {
+                    settings[fancyName] = !profile.exclude.includes(param);
+                }
+            }
+        }
+
         const template = $(await renderExtensionTemplateAsync(MODULE_NAME, 'edit', { name: profile.name, settings }));
         let newName = await callGenericPopup(template, POPUP_TYPE.INPUT, profile.name, {
             customButtons: [{

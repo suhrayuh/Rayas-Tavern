@@ -455,6 +455,9 @@ export class ConnectionManagerRequestService {
                         reverse_proxy: proxyPreset?.url,
                         proxy_password: proxyPreset?.password,
                         custom_prompt_post_processing: profile['prompt-post-processing'],
+                        custom_include_body: profile['custom-include-body'] || '',
+                        custom_exclude_body: profile['custom-exclude-body'] || '',
+                        custom_include_headers: profile['custom-include-headers'] || '',
                         ...overridePayload,
                     }, {
                         presetName: includePreset ? profile.preset : undefined,

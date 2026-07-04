@@ -33,6 +33,9 @@ const DEFAULT_SETTINGS = {
 const ALLOW_EMPTY = [
     'stop-strings',
     'start-reply-with',
+    'custom-include-body',
+    'custom-exclude-body',
+    'custom-include-headers',
 ];
 
 const CC_COMMANDS = [
@@ -87,6 +90,9 @@ const FANCY_NAMES = {
     'prompt-post-processing': 'Prompt Post-Processing',
     'secret-id': 'Secret',
     'regex-preset': 'Regex Preset',
+    'custom-include-body': 'Include Body Parameters',
+    'custom-exclude-body': 'Exclude Body Parameters',
+    'custom-include-headers': 'Include Request Headers',
 };
 
 /**
@@ -178,6 +184,9 @@ const profilesProvider = () => [
  * @property {string} [api-url] Server URL
  * @property {string} [secret-id] Secret ID
  * @property {string} [regex-preset] Regex Preset ID
+ * @property {string} [custom-include-body] Include Body Parameters (YAML)
+ * @property {string} [custom-exclude-body] Exclude Body Parameters (YAML)
+ * @property {string} [custom-include-headers] Include Request Headers (YAML)
  * @property {string[]} [exclude] Commands to exclude
  */
 
@@ -246,6 +255,18 @@ async function readProfileFromCommands(mode, profile, cleanUp = false) {
             }
 
             delete profile[command];
+        }
+    }
+
+    // Capture additional parameters directly from oai_settings (no slash commands)
+    if (mode === 'cc') {
+        try {
+            const { oai_settings } = await import('../../openai.js');
+            profile['custom-include-body'] = oai_settings.custom_include_body || '';
+            profile['custom-exclude-body'] = oai_settings.custom_exclude_body || '';
+            profile['custom-include-headers'] = oai_settings.custom_include_headers || '';
+        } catch (e) {
+            console.error('Failed to capture additional parameters for profile', e);
         }
     }
 }
@@ -417,6 +438,22 @@ async function applyConnectionProfile(profile) {
             await SlashCommandParser.commands[command].callback(args, argument);
         } catch (error) {
             console.error(`Failed to execute command: ${command} ${argument}`, error);
+        }
+    }
+
+    // Restore additional parameters directly to oai_settings (no slash commands)
+    if (mode === 'cc') {
+        try {
+            const { oai_settings } = await import('../../openai.js');
+            oai_settings.custom_include_body = profile['custom-include-body'] || '';
+            oai_settings.custom_exclude_body = profile['custom-exclude-body'] || '';
+            oai_settings.custom_include_headers = profile['custom-include-headers'] || '';
+            // Update the UI textareas if they exist
+            $('#custom_include_body').val(oai_settings.custom_include_body);
+            $('#custom_exclude_body').val(oai_settings.custom_exclude_body);
+            $('#custom_include_headers').val(oai_settings.custom_include_headers);
+        } catch (e) {
+            console.error('Failed to restore additional parameters from profile', e);
         }
     }
 

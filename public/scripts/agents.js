@@ -1213,7 +1213,17 @@ function syncOutputModeUi() {
     const outputType = String($('#agents_editor_output_type').val() || 'inject');
     $('#agents_output_role_wrap').toggleClass('displayNone', outputType !== 'inject');
     $('#agents_store_key_wrap').toggleClass('displayNone', outputType !== 'metadata');
-    $('#agents_structured_wrap').toggleClass('displayNone', !['rewrite', 'append'].includes(outputType));
+    $('#agents_structured_wrap').toggleClass('displayNone', !['rewrite', 'append', 'patch'].includes(outputType));
+    // Patch mode requires structured JSON output (the model emits a "patches" array).
+    if (outputType === 'patch') {
+        const $structured = $('#agents_editor_output_structured');
+        if (!$structured.prop('checked')) {
+            $structured.prop('checked', true);
+        }
+        $('#agents_patch_hint').removeClass('displayNone');
+    } else {
+        $('#agents_patch_hint').addClass('displayNone');
+    }
 }
 
 function fillEditor(agent) {

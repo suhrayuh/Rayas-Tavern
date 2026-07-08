@@ -5895,6 +5895,7 @@
                                     <option value="rewrite" data-i18n="Rewrite message">Rewrite message</option>
                                     <option value="append" data-i18n="Append to message">Append to message</option>
                                     <option value="metadata" data-i18n="Save metadata only">Save metadata only</option>
+                                    <option value="patch" data-i18n="Patch message (find/replace)">Patch message (find/replace)</option>
                                 </select>
                             </label>
                             <label id="agents_output_role_wrap" class="flex-container flexFlowColumn gap4px flex1 minWidth200px">
@@ -5913,6 +5914,9 @@
                         <div id="agents_structured_wrap" class="flex-container flexWrap gap10px alignitemscenter">
                             <label class="checkbox_label"><input id="agents_editor_output_structured" type="checkbox"> <span>Structured JSON revision output</span></label>
                             <small class="text_muted">Lets later post agents see what earlier passes changed and what should not be reintroduced.</small>
+                        </div>
+                        <div id="agents_patch_hint" class="flex-container flexFlowColumn gap4px displayNone">
+                            <small class="text_muted" data-i18n="Patch mode: the model emits a JSON 'patches' array of {find, replace} hunks. Untouched text is preserved automatically, so it only outputs the snippets it changes. Each 'find' must match the message text exactly or that hunk is skipped.">Patch mode: the model emits a JSON 'patches' array of {find, replace} hunks. Untouched text is preserved automatically, so it only outputs the snippets it changes. Each 'find' must match the message text exactly or that hunk is skipped.</small>
                         </div>
                         <div class="flex-container flexWrap gap10px">
                             <label class="flex-container flexFlowColumn gap4px flex1 minWidth200px">

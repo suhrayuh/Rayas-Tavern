@@ -23,6 +23,7 @@ import { invalidateThumbnail } from './thumbnails.js';
 import { importRisuSprites } from './sprites.js';
 import { getUserDirectories } from '../users.js';
 import { getChatInfo } from './chats.js';
+import { getDatabase } from './sqlite-manager.js';
 import { ByafParser } from '../byaf.js';
 import { CharXParser, persistCharXAssets } from '../charx.js';
 import cacheBuster from '../middleware/cacheBuster.js';
@@ -1499,28 +1500,27 @@ router.post('/chats', validateAvatarUrlMiddleware, async function (request, resp
     try {
         if (!request.body) return response.sendStatus(400);
 
+        const handle = request.user.profile.handle;
         const characterDirectory = (request.body.avatar_url).replace('.png', '');
-        const chatsDirectory = path.join(request.user.directories.chats, characterDirectory);
 
-        if (!fs.existsSync(chatsDirectory)) {
-            return response.send({ error: true });
-        }
+        const db = getDatabase(handle);
+        const chatRows = db.prepare("SELECT id FROM chats WHERE user_id = ? AND chat_type = 'character' AND character_key = ?").all(handle, characterDirectory);
 
-        const files = fs.readdirSync(chatsDirectory, { withFileTypes: true });
-        const jsonFiles = files.filter(file => file.isFile() && path.extname(file.name) === '.jsonl').map(file => file.name);
+        // Return pseudo-filenames with .jsonl suffix for client compatibility
+        const jsonFiles = chatRows.map(r => path.basename(r.id) + '.jsonl');
 
         if (jsonFiles.length === 0) {
             return response.send([]);
         }
 
         if (request.body.simple) {
-            return response.send(jsonFiles.map(file => ({ file_name: file, file_id: path.parse(file).name })));
+            return response.send(jsonFiles.map(file => ({ file_name: file, file_id: path.basename(file, '.jsonl') })));
         }
 
         const jsonFilesPromise = jsonFiles.map((file) => {
             const withMetadata = !!request.body.metadata;
-            const pathToFile = path.join(request.user.directories.chats, characterDirectory, file);
-            return getChatInfo(pathToFile, {}, withMetadata);
+            const chatId = `char/${characterDirectory}/${path.parse(file).name}`;
+            return getChatInfo(chatId, {}, withMetadata, null, handle);
         });
 
         const chatData = (await Promise.allSettled(jsonFilesPromise)).filter(x => x.status === 'fulfilled').map(x => x.value);
@@ -1530,6 +1530,7 @@ router.post('/chats', validateAvatarUrlMiddleware, async function (request, resp
     } catch (error) {
         console.error(error);
         return response.send({ error: true });
+
     }
 });
 

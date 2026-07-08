@@ -4,7 +4,8 @@ import path from 'node:path';
 import express from 'express';
 import mime from 'mime-types';
 import { getSettingsBackupFilePrefix } from './settings.js';
-import { CHAT_BACKUPS_PREFIX } from './chats.js';
+import { CHAT_BACKUPS_PREFIX, getChatData } from './chats.js';
+import { getDatabase } from './sqlite-manager.js';
 import { isPathUnderParent, tryParse } from '../util.js';
 import { SETTINGS_FILE } from '../constants.js';
 
@@ -325,6 +326,8 @@ export class DataMaidService {
         const result = [];
 
         try {
+            const userId = this.handle; // data/<userId>
+            const db = getDatabase(userId);
             const knownChatFolders = new Set();
             const characters = await fs.promises.readdir(this.directories.characters, { withFileTypes: true });
             for (const file of characters) {
@@ -332,15 +335,11 @@ export class DataMaidService {
                     knownChatFolders.add(file.name.replace('.png', ''));
                 }
             }
-            const chatFolders = await fs.promises.readdir(this.directories.chats, { withFileTypes: true });
-            for (const folder of chatFolders) {
-                if (folder.isDirectory() && !knownChatFolders.has(folder.name)) {
-                    const chatFiles = await fs.promises.readdir(path.join(this.directories.chats, folder.name), { withFileTypes: true });
-                    for (const file of chatFiles) {
-                        if (file.isFile() && path.parse(file.name).ext === '.jsonl') {
-                            result.push(path.join(this.directories.chats, folder.name, file.name));
-                        }
-                    }
+            // Collect orphaned character chats from DB (chats whose character_key has no matching .png)
+            const chatRows = db.prepare("SELECT id, character_key FROM chats WHERE user_id = ? AND chat_type = 'character'").all(userId);
+            for (const row of chatRows) {
+                if (!knownChatFolders.has(row.character_key)) {
+                    result.push(`char/${row.character_key}/${path.basename(row.id)}`);
                 }
             }
         } catch (error) {
@@ -359,6 +358,8 @@ export class DataMaidService {
         const result = [];
 
         try {
+            const userId = this.handle;
+            const db = getDatabase(userId);
             const groups = await fs.promises.readdir(this.directories.groups, { withFileTypes: true });
             const knownGroupChats = new Set();
             for (const file of groups) {
@@ -380,12 +381,11 @@ export class DataMaidService {
                     }
                 }
             }
-            const groupChats = await fs.promises.readdir(this.directories.groupChats, { withFileTypes: true });
-            for (const file of groupChats) {
-                if (file.isFile() && path.parse(file.name).ext === '.jsonl') {
-                    if (!knownGroupChats.has(path.parse(file.name).name)) {
-                        result.push(path.join(this.directories.groupChats, file.name));
-                    }
+            const groupChatRows = db.prepare("SELECT id, group_id FROM chats WHERE user_id = ? AND chat_type = 'group'").all(userId);
+            for (const row of groupChatRows) {
+                const chatId = row.group_id || path.basename(row.id);
+                if (!knownGroupChats.has(chatId)) {
+                    result.push(`group/${chatId}`);
                 }
             }
         } catch (error) {
@@ -531,27 +531,20 @@ export class DataMaidService {
      */
     async #parseAllChats(filterFn) {
         try {
+            const userId = this.handle;
+            const db = getDatabase(userId);
             const allChats = [];
 
-            const groupChats = await fs.promises.readdir(this.directories.groupChats, { withFileTypes: true });
-            for (const file of groupChats) {
-                if (file.isFile() && path.parse(file.name).ext === '.jsonl') {
-                    const chatMessages = await this.#parseChatFile(path.join(this.directories.groupChats, file.name));
-                    allChats.push(...chatMessages.filter(filterFn));
-                }
+            const groupRows = db.prepare("SELECT id FROM chats WHERE user_id = ? AND chat_type = 'group'").all(userId);
+            for (const row of groupRows) {
+                const chatMessages = getChatData(row.id, userId);
+                allChats.push(...chatMessages.filter(filterFn));
             }
 
-            const chatDirectories = await fs.promises.readdir(this.directories.chats, { withFileTypes: true });
-            for (const directory of chatDirectories) {
-                if (directory.isDirectory()) {
-                    const chatFiles = await fs.promises.readdir(path.join(this.directories.chats, directory.name), { withFileTypes: true });
-                    for (const file of chatFiles) {
-                        if (file.isFile() && path.parse(file.name).ext === '.jsonl') {
-                            const chatMessages = await this.#parseChatFile(path.join(this.directories.chats, directory.name, file.name));
-                            allChats.push(...chatMessages.filter(filterFn));
-                        }
-                    }
-                }
+            const charRows = db.prepare("SELECT id FROM chats WHERE user_id = ? AND chat_type = 'character'").all(userId);
+            for (const row of charRows) {
+                const chatMessages = getChatData(row.id, userId);
+                allChats.push(...chatMessages.filter(filterFn));
             }
 
             return allChats;
@@ -569,6 +562,8 @@ export class DataMaidService {
      */
     async #parseAllMetadata(filterFn) {
         try {
+            const userId = this.handle;
+            const db = getDatabase(userId);
             const allMetadata = [];
 
             const groups = await fs.promises.readdir(this.directories.groups, { withFileTypes: true });
@@ -592,30 +587,12 @@ export class DataMaidService {
                 }
             }
 
-            const groupChats = await fs.promises.readdir(this.directories.groupChats, { withFileTypes: true });
-            for (const file of groupChats) {
-                if (file.isFile() && path.parse(file.name).ext === '.jsonl') {
-                    const chatMessages = await this.#parseChatFile(path.join(this.directories.groupChats, file.name));
-                    const chatMetadata = chatMessages?.[0]?.chat_metadata;
-                    if (chatMetadata && filterFn(chatMetadata)) {
-                        allMetadata.push(chatMetadata);
-                    }
-                }
-            }
-
-            const chatDirectories = await fs.promises.readdir(this.directories.chats, { withFileTypes: true });
-            for (const directory of chatDirectories) {
-                if (directory.isDirectory()) {
-                    const chatFiles = await fs.promises.readdir(path.join(this.directories.chats, directory.name), { withFileTypes: true });
-                    for (const file of chatFiles) {
-                        if (file.isFile() && path.parse(file.name).ext === '.jsonl') {
-                            const chatMessages = await this.#parseChatFile(path.join(this.directories.chats, directory.name, file.name));
-                            const chatMetadata = chatMessages?.[0]?.chat_metadata;
-                            if (chatMetadata && filterFn(chatMetadata)) {
-                                allMetadata.push(chatMetadata);
-                            }
-                        }
-                    }
+            const allChatRows = db.prepare("SELECT id FROM chats WHERE user_id = ?").all(userId);
+            for (const row of allChatRows) {
+                const chatMessages = getChatData(row.id, userId);
+                const chatMetadata = chatMessages?.[0]?.chat_metadata;
+                if (chatMetadata && filterFn(chatMetadata)) {
+                    allMetadata.push(chatMetadata);
                 }
             }
 

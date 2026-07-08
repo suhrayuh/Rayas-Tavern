@@ -101,7 +101,7 @@ export function normalizeAgent(rawAgent = {}) {
     };
 
     const phase = ['pre', 'post', 'manual'].includes(String(rawAgent.phase ?? '')) ? String(rawAgent.phase) : defaults.phase;
-    const outputType = ['inject', 'rewrite', 'append', 'metadata'].includes(String(rawAgent?.outputMode?.type ?? ''))
+    const outputType = ['inject', 'rewrite', 'append', 'metadata', 'patch'].includes(String(rawAgent?.outputMode?.type ?? ''))
         ? String(rawAgent.outputMode.type)
         : defaults.outputMode.type;
     const outputRole = ['system', 'user', 'assistant'].includes(String(rawAgent?.outputMode?.role ?? ''))

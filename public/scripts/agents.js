@@ -27,6 +27,7 @@ import { getTokenCountAsync } from './tokenizers.js';
 import { getSortableDelay } from './utils.js';
 import {
     PRE_AGENT_PROMPT_KEY,
+    DEFAULT_AGENT_PRIORITY,
     DEFAULT_AGENT_MAX_TOKENS,
     DEFAULT_AGENT_RETRIES,
     ensureAgentsSettings,
@@ -225,6 +226,8 @@ function getOutputLabel(agent) {
             return 'Append';
         case 'metadata':
             return `Metadata · ${String(agent?.outputMode?.storeKey || 'agent_result')}`;
+        case 'patch':
+            return 'Patch';
         default:
             return 'Output';
     }
@@ -382,7 +385,15 @@ function buildRevisionHistoryXml(revisionContext) {
     const passXml = revisionContext.passes.map((pass, index) => {
         const blockedXml = uniqueStringList(pass.blockedReintroductions).map(item => `\n        <blocked>${escapeXmlText(item)}</blocked>`).join('');
         const notesXml = uniqueStringList(pass.notesForFuturePasses).map(item => `\n        <note>${escapeXmlText(item)}</note>`).join('');
-        return `<pass index="${index + 1}" agent="${escapeHtmlAttr(pass.agentName || 'Agent')}">\n    <changed>${pass.changed ? 'true' : 'false'}</changed>\n    <summary>${escapeXmlText(pass.summary || 'No summary')}</summary>${blockedXml}${notesXml}\n</pass>`;
+        const appliedPatches = Array.isArray(pass.appliedPatches) ? pass.appliedPatches : [];
+        const skippedPatches = Array.isArray(pass.skippedPatches) ? pass.skippedPatches : [];
+        const patchesXml = appliedPatches.length
+            ? '\n        <patches>' + appliedPatches.map(p => `\n            <hunk find="${escapeHtmlAttr(p.find)}" replace="${escapeHtmlAttr(p.replace)}" />`).join('') + '\n        </patches>'
+            : '';
+        const skippedXml = skippedPatches.length
+            ? '\n        <skipped>' + skippedPatches.map(p => `\n            <hunk reason="${escapeHtmlAttr(p.reason || 'not found')}" find="${escapeHtmlAttr(p.find)}" />`).join('') + '\n        </skipped>'
+            : '';
+        return `<pass index="${index + 1}" agent="${escapeHtmlAttr(pass.agentName || 'Agent')}">\n    <changed>${pass.changed ? 'true' : 'false'}</changed>\n    <summary>${escapeXmlText(pass.summary || 'No summary')}</summary>${blockedXml}${notesXml}${patchesXml}${skippedXml}\n</pass>`;
     }).join('\n');
 
     const forbiddenXml = uniqueStringList(revisionContext.forbiddenAddBack).map(item => `\n    <phrase>${escapeXmlText(item)}</phrase>`).join('');
@@ -423,6 +434,9 @@ function buildAgentContext(agent, { message = null, messageId = null, generation
         revisionHistory: revisionHistoryXml,
         forbiddenAddBack: uniqueStringList(revisionContext?.forbiddenAddBack).join('\n'),
         revisionNotes: uniqueStringList(revisionContext?.notesForNextPass).join('\n'),
+        patchInstruction: agent.outputMode.type === 'patch'
+            ? 'OUTPUT MODE: PATCH. Do NOT rewrite the whole message. Output a JSON object with a "patches" array. Each patch is { "find": "<exact substring copied verbatim from the message above>", "replace": "<the edited version of just that substring>" }. Only include substrings you are intentionally changing. Untouched text is preserved automatically — never repeat it. Match "find" exactly (including spacing) or the patch will be skipped. Keep "find" as small as possible while still being unique.'
+            : '',
         characterName: character?.name ?? '',
         characterDescription: agent.inputMode.includeCharacter ? String(character?.description ?? '') : '',
         characterPersonality: agent.inputMode.includeCharacter ? String(character?.personality ?? '') : '',
@@ -466,6 +480,10 @@ async function buildAgentPrompt(agent, context) {
 
     if (context.revisionHistory) {
         sections.push(`Previous Revision Passes:\n${context.revisionHistory}`);
+    }
+
+    if (context.patchInstruction) {
+        sections.push(context.patchInstruction);
     }
 
     return [basePrompt, ...sections.filter(Boolean)].filter(Boolean).join('\n\n');
@@ -520,10 +538,17 @@ async function runAgentCompletionWithRetries(agent, context, { validateStructure
                 throw new Error(`Agent "${agent.name || 'Unnamed Agent'}" produced invalid or incomplete structured output.`);
             }
 
+            // Patch mode: require at least one usable find/replace hunk.
+            if (validateStructured && agent?.outputMode?.type === 'patch' && (!structured || structured.mode !== 'patch' || !structured.patches.length)) {
+                throw new Error(`Agent "${agent.name || 'Unnamed Agent'}" produced no valid patches (expected a "patches" array of {find, replace}).`);
+            }
+
             if (validateMinTokens && minTokens > 0) {
-                const tokenCandidate = structured && ['rewrite', 'append'].includes(agent?.outputMode?.type)
+                const tokenCandidate = structured && (['rewrite', 'append'].includes(agent?.outputMode?.type))
                     ? String(structured.revised_message ?? '')
-                    : String(result ?? '');
+                    : structured && agent?.outputMode?.type === 'patch'
+                        ? structured.patches.map(p => String(p.replace ?? '')).join('\n')
+                        : String(result ?? '');
                 const tokenText = extractInfoBoard(decodeHtmlEntities(tokenCandidate)).body.trim();
                 const tokenCount = await getTokenCountAsync(tokenText, 0);
 
@@ -704,6 +729,55 @@ async function applyPostAgentResult(agent, messageId, result, { updateDom = true
             }
             return { changed: true, outputMessage: appended, metadata: structured, parseFailed: false };
         }
+        case 'patch': {
+            const patches = Array.isArray(structured?.patches) ? structured.patches : [];
+            if (!patches.length) {
+                return { changed: false, outputMessage: String(message.mes ?? ''), metadata: structured, parseFailed: false, appliedPatches: [], skippedPatches: [] };
+            }
+
+            // Work on the decoded representation so `find` strings (which the model
+            // sees decoded) match what's actually in the message. Mirrors how
+            // `rewrite` mode stores decoded text back into message.mes.
+            let working = decodeHtmlEntities(String(message.mes ?? ''));
+            const appliedPatches = [];
+            const skippedPatches = [];
+
+            for (const patch of patches) {
+                const find = String(patch.find ?? '');
+                const replace = String(patch.replace ?? '');
+                if (!find) {
+                    skippedPatches.push({ find, replace, reason: 'empty find' });
+                    continue;
+                }
+                const idx = working.indexOf(find);
+                if (idx === -1) {
+                    console.warn(`[Agents] Patch hunk skipped (find not found) in agent "${agent.name || 'Unnamed Agent'}":`, find.slice(0, 80));
+                    skippedPatches.push({ find, replace, reason: 'not found' });
+                    continue;
+                }
+                // First occurrence only — predictable, no accidental mass edits.
+                working = working.slice(0, idx) + replace + working.slice(idx + find.length);
+                appliedPatches.push({ find, replace });
+            }
+
+            if (!appliedPatches.length) {
+                return { changed: false, outputMessage: String(message.mes ?? ''), metadata: structured, parseFailed: false, appliedPatches, skippedPatches };
+            }
+
+            const newMes = working;
+            message.mes = newMes;
+            if (Array.isArray(message.swipes) && Number.isInteger(message.swipe_id)) {
+                const swipeIndex = Number(message.swipe_id);
+                if (swipeIndex >= 0 && swipeIndex < message.swipes.length) {
+                    message.swipes[swipeIndex] = newMes;
+                }
+            }
+
+            if (updateDom && document.querySelector(`#chat [mesid="${messageId}"]`)) {
+                updateMessageBlock(messageId, message, { rerenderMessage: true });
+            }
+            return { changed: true, outputMessage: newMes, metadata: structured, parseFailed: false, appliedPatches, skippedPatches };
+        }
         case 'metadata': {
             message.extra.rayasAgents[agent.outputMode.storeKey || 'agent_result'] = effectiveResult;
             return { changed: true, outputMessage: String(message.mes ?? ''), metadata: structured, parseFailed: false };
@@ -828,7 +902,11 @@ async function runPostAgentsForMessage(messageId, generationType = 'normal', sou
                     successfulPasses++;
                 }
 
-                updateRevisionContext(revisionContext, agent, inputMessage, applyResult.outputMessage, result, changed, { parseFailed });
+                updateRevisionContext(revisionContext, agent, inputMessage, applyResult.outputMessage, result, changed, {
+                    parseFailed,
+                    appliedPatches: applyResult.appliedPatches || [],
+                    skippedPatches: applyResult.skippedPatches || [],
+                });
                 messageChanged = messageChanged || changed;
 
                 if (agent.outputMode.type === 'rewrite' && changed) {
@@ -1183,6 +1261,24 @@ function parseStructuredAgentResult(rawResult) {
             return null;
         }
 
+        if (Array.isArray(parsed.patches)) {
+            const patches = parsed.patches
+                .filter(p => p && typeof p === 'object')
+                .map(p => ({
+                    find: typeof p.find === 'string' ? p.find : '',
+                    replace: typeof p.replace === 'string' ? p.replace : '',
+                }))
+                .filter(p => p.find.length > 0);
+            return {
+                mode: 'patch',
+                patches,
+                changed: typeof parsed.changed === 'boolean' ? parsed.changed : undefined,
+                what_changed: typeof parsed.what_changed === 'string' ? parsed.what_changed.trim() : '',
+                removed_or_blocked_phrases: uniqueStringList(parsed.removed_or_blocked_phrases),
+                notes_for_future_passes: uniqueStringList(parsed.notes_for_future_passes),
+            };
+        }
+
         return {
             revised_message: typeof parsed.revised_message === 'string' ? parsed.revised_message : '',
             changed: typeof parsed.changed === 'boolean' ? parsed.changed : undefined,
@@ -1208,6 +1304,8 @@ function updateRevisionContext(revisionContext, agent, inputMessage, outputMessa
             || (changed ? `Revised message content${agent.name ? ` via ${agent.name}` : ''}.` : 'No changes made.'));
     const blocked = uniqueStringList(structured?.removed_or_blocked_phrases);
     const notes = uniqueStringList(structured?.notes_for_future_passes);
+    const appliedPatches = Array.isArray(options.appliedPatches) ? options.appliedPatches : [];
+    const skippedPatches = Array.isArray(options.skippedPatches) ? options.skippedPatches : [];
 
     revisionContext.currentMessage = String(outputMessage ?? inputMessage ?? revisionContext.currentMessage ?? '');
     revisionContext.passes.push({
@@ -1219,6 +1317,8 @@ function updateRevisionContext(revisionContext, agent, inputMessage, outputMessa
         summary,
         blockedReintroductions: blocked,
         notesForFuturePasses: notes,
+        appliedPatches,
+        skippedPatches,
     });
     revisionContext.forbiddenAddBack = uniqueStringList([...revisionContext.forbiddenAddBack, ...blocked]);
     revisionContext.notesForNextPass = uniqueStringList([...revisionContext.notesForNextPass, summary, ...notes]);

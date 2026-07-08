@@ -68,7 +68,7 @@ function trimBackups(userId, chatId) {
     const db = getDatabase(userId);
     const count = db.prepare('SELECT COUNT(*) AS c FROM backups WHERE chat_id = ?').get(chatId)?.c || 0;
     if (count > maxTotalChatBackups) {
-        const toDelete = db.prepare(`SELECT id FROM backups WHERE chat_id = ? ORDER BY created_at ASC LIMIT ?`).all(chatId, count - maxTotalChatBackups);
+        const toDelete = db.prepare('SELECT id FROM backups WHERE chat_id = ? ORDER BY created_at ASC LIMIT ?').all(chatId, count - maxTotalChatBackups);
         for (const row of toDelete) {
             db.prepare('DELETE FROM backups WHERE id = ?').run(row.id);
         }
@@ -862,11 +862,11 @@ router.post('/search', validateAvatarUrlMiddleware, async function (request, res
         let chatIds = [];
 
         if (group_id) {
-            const rows = db.prepare("SELECT id FROM chats WHERE user_id = ? AND chat_type = 'group' AND group_id = ?").all(handle, group_id);
+            const rows = db.prepare('SELECT id FROM chats WHERE user_id = ? AND chat_type = \'group\' AND group_id = ?').all(handle, group_id);
             chatIds = rows.map(r => r.id);
         } else {
             const character_name = avatar_url.replace('.png', '');
-            const rows = db.prepare("SELECT id FROM chats WHERE user_id = ? AND chat_type = 'character' AND character_key = ?").all(handle, character_name);
+            const rows = db.prepare('SELECT id FROM chats WHERE user_id = ? AND chat_type = \'character\' AND character_key = ?').all(handle, character_name);
             chatIds = rows.map(r => r.id);
         }
 
@@ -932,13 +932,13 @@ router.post('/recent', async function (request, response) {
         const allChatFiles = [];
 
         // Character chats
-        const charRows = db.prepare("SELECT id, character_key, updated_at FROM chats WHERE user_id = ? AND chat_type = 'character'").all(handle);
+        const charRows = db.prepare('SELECT id, character_key, updated_at FROM chats WHERE user_id = ? AND chat_type = \'character\'').all(handle);
         for (const row of charRows) {
             allChatFiles.push({ pngFile: `${row.character_key}.png`, chatId: row.id, mtime: row.updated_at });
         }
 
         // Group chats
-        const groupRows = db.prepare("SELECT id, group_id, updated_at FROM chats WHERE user_id = ? AND chat_type = 'group'").all(handle);
+        const groupRows = db.prepare('SELECT id, group_id, updated_at FROM chats WHERE user_id = ? AND chat_type = \'group\'').all(handle);
         for (const row of groupRows) {
             allChatFiles.push({ groupId: row.group_id, chatId: row.id, mtime: row.updated_at });
         }

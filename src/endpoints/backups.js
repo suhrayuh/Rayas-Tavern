@@ -11,7 +11,7 @@ router.post('/chat/get', async (request, response) => {
     try {
         const handle = request.user.profile.handle;
         const db = getDatabase(handle);
-        const rows = db.prepare("SELECT id, chat_id, version, created_at, data FROM backups WHERE chat_id LIKE ? ORDER BY created_at DESC").all('char/%');
+        const rows = db.prepare('SELECT id, chat_id, version, created_at, data FROM backups WHERE chat_id LIKE ? ORDER BY created_at DESC').all('char/%');
 
         const backupModels = [];
         for (const row of rows) {

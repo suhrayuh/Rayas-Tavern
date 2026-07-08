@@ -336,7 +336,7 @@ export class DataMaidService {
                 }
             }
             // Collect orphaned character chats from DB (chats whose character_key has no matching .png)
-            const chatRows = db.prepare("SELECT id, character_key FROM chats WHERE user_id = ? AND chat_type = 'character'").all(userId);
+            const chatRows = db.prepare('SELECT id, character_key FROM chats WHERE user_id = ? AND chat_type = \'character\'').all(userId);
             for (const row of chatRows) {
                 if (!knownChatFolders.has(row.character_key)) {
                     result.push(`char/${row.character_key}/${path.basename(row.id)}`);
@@ -381,7 +381,7 @@ export class DataMaidService {
                     }
                 }
             }
-            const groupChatRows = db.prepare("SELECT id, group_id FROM chats WHERE user_id = ? AND chat_type = 'group'").all(userId);
+            const groupChatRows = db.prepare('SELECT id, group_id FROM chats WHERE user_id = ? AND chat_type = \'group\'').all(userId);
             for (const row of groupChatRows) {
                 const chatId = row.group_id || path.basename(row.id);
                 if (!knownGroupChats.has(chatId)) {
@@ -535,13 +535,13 @@ export class DataMaidService {
             const db = getDatabase(userId);
             const allChats = [];
 
-            const groupRows = db.prepare("SELECT id FROM chats WHERE user_id = ? AND chat_type = 'group'").all(userId);
+            const groupRows = db.prepare('SELECT id FROM chats WHERE user_id = ? AND chat_type = \'group\'').all(userId);
             for (const row of groupRows) {
                 const chatMessages = getChatData(row.id, userId);
                 allChats.push(...chatMessages.filter(filterFn));
             }
 
-            const charRows = db.prepare("SELECT id FROM chats WHERE user_id = ? AND chat_type = 'character'").all(userId);
+            const charRows = db.prepare('SELECT id FROM chats WHERE user_id = ? AND chat_type = \'character\'').all(userId);
             for (const row of charRows) {
                 const chatMessages = getChatData(row.id, userId);
                 allChats.push(...chatMessages.filter(filterFn));
@@ -587,7 +587,7 @@ export class DataMaidService {
                 }
             }
 
-            const allChatRows = db.prepare("SELECT id FROM chats WHERE user_id = ?").all(userId);
+            const allChatRows = db.prepare('SELECT id FROM chats WHERE user_id = ?').all(userId);
             for (const row of allChatRows) {
                 const chatMessages = getChatData(row.id, userId);
                 const chatMetadata = chatMessages?.[0]?.chat_metadata;

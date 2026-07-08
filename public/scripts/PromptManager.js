@@ -1154,7 +1154,7 @@ class PromptManager {
         const snapshots = this.getSnapshots();
         const characterId = this.getSnapshotCharacterId();
         const serviceType = this.configuration.serviceType || 'openai';
-        
+
         // Auto-append number if name collision
         let finalName = name;
         const existingNames = snapshots.map(s => s.name);
@@ -1175,7 +1175,7 @@ class PromptManager {
 
         snapshots.push(snapshot);
         this.saveSnapshots(snapshots);
-        
+
         this.log(`Snapshot created: "${finalName}" for ${characterId}`);
         return snapshot;
     }
@@ -1188,10 +1188,10 @@ class PromptManager {
         const characterId = this.getSnapshotCharacterId();
         const serviceType = this.configuration.serviceType || 'openai';
         const snapshots = this.getSnapshots();
-        
-        return snapshots.filter(s => 
-            s.characterId === characterId && 
-            s.serviceType === serviceType
+
+        return snapshots.filter(s =>
+            s.characterId === characterId &&
+            s.serviceType === serviceType,
         );
     }
 
@@ -1209,10 +1209,10 @@ class PromptManager {
 
         const currentPromptOrder = this.getPromptOrderForCharacter(this.activeCharacter);
         const currentIdentifiers = new Set(currentPromptOrder.map(p => p.identifier));
-        
+
         // Only apply states for prompts that still exist
-        const applicableOrder = snapshot.promptOrder.filter(entry => 
-            currentIdentifiers.has(entry.identifier)
+        const applicableOrder = snapshot.promptOrder.filter(entry =>
+            currentIdentifiers.has(entry.identifier),
         );
 
         if (applicableOrder.length === 0) {
@@ -1224,7 +1224,7 @@ class PromptManager {
         // For prompts in snapshot, use snapshot's enabled state
         // For prompts not in snapshot, leave them as-is
         const snapshotMap = new Map(applicableOrder.map(p => [p.identifier, p.enabled]));
-        
+
         const mergedOrder = currentPromptOrder.map(entry => ({
             ...entry,
             enabled: snapshotMap.has(entry.identifier) ? snapshotMap.get(entry.identifier) : entry.enabled,
@@ -1253,7 +1253,7 @@ class PromptManager {
     deleteSnapshot(snapshotId) {
         const snapshots = this.getSnapshots();
         const index = snapshots.findIndex(s => s.id === snapshotId);
-        
+
         if (index === -1) {
             toastr.warning('Snapshot not found.', 'Prompt Snapshots');
             return false;
@@ -1262,7 +1262,7 @@ class PromptManager {
         const deletedName = snapshots[index].name;
         snapshots.splice(index, 1);
         this.saveSnapshots(snapshots);
-        
+
         this.log(`Snapshot deleted: "${deletedName}"`);
         toastr.success(`Snapshot "${deletedName}" deleted.`, 'Prompt Snapshots');
         return true;
@@ -1278,7 +1278,7 @@ class PromptManager {
         const snapshot = this.createSnapshot(name.trim());
         this.renderSnapshotControls(snapshot.id);
         toastr.success('Snapshot saved.', 'Prompt Snapshots');
-    }
+    };
 
     /**
      * Handle selecting a snapshot from the dropdown.
@@ -1291,7 +1291,7 @@ class PromptManager {
         }
 
         this.applySnapshot(select.value);
-    }
+    };
 
     /**
      * Handle editing the selected snapshot's name.
@@ -1322,7 +1322,7 @@ class PromptManager {
         this.saveSnapshots(snapshots);
         this.renderSnapshotControls(snapshot.id);
         toastr.success('Snapshot renamed.', 'Prompt Snapshots');
-    }
+    };
 
     /**
      * Handle deleting a snapshot from the UI.
@@ -1339,14 +1339,14 @@ class PromptManager {
 
         const confirmed = await Popup.show.confirm(
             'Delete Snapshot',
-            `Are you sure you want to delete "${snapshot.name}"?`
+            `Are you sure you want to delete "${snapshot.name}"?`,
         );
 
         if (confirmed) {
             this.deleteSnapshot(select.value);
             this.renderSnapshotControls();
         }
-    }
+    };
 
     /**
      * Render the snapshot controls in the footer.

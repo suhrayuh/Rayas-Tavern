@@ -3803,8 +3803,8 @@ class StreamingProcessor {
 
         syncMesToSwipe(messageId);
         saveLogprobsForActiveMessage(this.messageLogprobs.filter(Boolean), this.continueMessage);
-		
-		// Strip tracker/sim code blocks from newly generated messages
+
+        // Strip tracker/sim code blocks from newly generated messages
         // This ensures SimTracker's secondary LLM always generates the tracker
         // and prevents the main LLM from generating trackers that would skip secondary generation
         if (message && message.mes) {
@@ -3816,17 +3816,17 @@ class StreamingProcessor {
             const trackerBlockRegex = /<div style="display: none;">\s*\n?\s*```(?:sim|tracker|simtracker|disp)[\s\S]*?```\s*\n?\s*<\/div>|```(?:sim|tracker|simtracker|disp)[\s\S]*?```/gi;
             const originalMes = message.mes;
             const cleanedMes = originalMes.replace(trackerBlockRegex, '').trim();
-            
+
             // Only update if we actually removed something
             if (cleanedMes !== originalMes) {
                 message.mes = cleanedMes;
-                
+
                 // Also update the swipe if this is a new message (not a swipe)
                 if (this.type !== 'swipe' && Array.isArray(message.swipes) && message.swipes.length > 0) {
                     const lastSwipeIndex = message.swipes.length - 1;
                     message.swipes[lastSwipeIndex] = cleanedMes;
                 }
-                
+
                 console.log(`[TrackerStrip] Removed tracker blocks from message ${messageId}`);
             }
         }
@@ -5451,7 +5451,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
                 isImpersonate: isImpersonate,
                 isContinue: isContinue,
                 displayIncompleteSentences: false,
-				stripGeneratedTrackerBlocks: true,
+                stripGeneratedTrackerBlocks: true,
             });
 
             if (isContinue) {
@@ -5550,7 +5550,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
             isImpersonate: isImpersonate,
             isContinue: isContinue,
             displayIncompleteSentences: false,
-			stripGeneratedTrackerBlocks: true,
+            stripGeneratedTrackerBlocks: true,
         });
 
 
@@ -6474,7 +6474,7 @@ function extractMultiSwipes(data, type) {
         isImpersonate: false,
         isContinue: false,
         displayIncompleteSentences: false,
-		stripGeneratedTrackerBlocks: true,
+        stripGeneratedTrackerBlocks: true,
     }));
 
     return cleanedSwipes;
@@ -6542,7 +6542,7 @@ export function cleanUpMessage({ getMessage, isImpersonate, isContinue, displayI
             .replace(/\n{3,}/g, '\n\n')
             .trim();
     }
-	
+
     if (power_user.collapse_newlines) {
         getMessage = collapseNewlines(getMessage);
     }
@@ -6854,7 +6854,7 @@ export async function saveReply({ type, getMessage, fromStreaming = false, title
             lastMessage.extra.reasoning = reasoning;
             lastMessage.extra.reasoning_duration = null;
             lastMessage.extra.reasoning_signature = reasoningSignature;
-			attachWorldInfoTraceToMessage(lastMessage);
+            attachWorldInfoTraceToMessage(lastMessage);
             await processImageAttachment(lastMessage, { imageUrls });
             if (power_user.message_token_count_enabled) {
                 const tokenCountText = (reasoning || '') + lastMessage.mes;
@@ -6881,7 +6881,7 @@ export async function saveReply({ type, getMessage, fromStreaming = false, title
         lastMessage.extra.reasoning = reasoning;
         lastMessage.extra.reasoning_duration = null;
         lastMessage.extra.reasoning_signature = reasoningSignature;
-		attachWorldInfoTraceToMessage(lastMessage);
+        attachWorldInfoTraceToMessage(lastMessage);
         await processImageAttachment(lastMessage, { imageUrls });
         if (power_user.message_token_count_enabled) {
             const tokenCountText = (reasoning || '') + lastMessage.mes;
@@ -6904,7 +6904,7 @@ export async function saveReply({ type, getMessage, fromStreaming = false, title
         lastMessage.extra.model = getGeneratingModel();
         lastMessage.extra.reasoning += reasoning;
         lastMessage.extra.reasoning_signature = reasoningSignature;
-		attachWorldInfoTraceToMessage(lastMessage);
+        attachWorldInfoTraceToMessage(lastMessage);
         await processImageAttachment(lastMessage, { imageUrls });
         // We don't know if the reasoning duration extended, so we don't update it here on purpose.
         if (power_user.message_token_count_enabled) {
@@ -12368,10 +12368,10 @@ jQuery(async function () {
     $(document).on('click', '.drawer-opener', doDrawerOpenClick);
 
     $('.drawer-toggle').on('click', doNavbarIconClick);
-	refreshWorldInfoTracePanelFromChat();
-	
-	eventSource.on(event_types.MESSAGE_RECEIVED, refreshWorldInfoTracePanelFromChat);
-	eventSource.on(event_types.CHAT_CHANGED, refreshWorldInfoTracePanelFromChat);
+    refreshWorldInfoTracePanelFromChat();
+
+    eventSource.on(event_types.MESSAGE_RECEIVED, refreshWorldInfoTracePanelFromChat);
+    eventSource.on(event_types.CHAT_CHANGED, refreshWorldInfoTracePanelFromChat);
 
     $('html').on('touchstart mousedown', async function (e) {
         const clickTarget = $(e.target);

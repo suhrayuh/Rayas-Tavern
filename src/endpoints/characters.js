@@ -1504,7 +1504,7 @@ router.post('/chats', validateAvatarUrlMiddleware, async function (request, resp
         const characterDirectory = (request.body.avatar_url).replace('.png', '');
 
         const db = getDatabase(handle);
-        const chatRows = db.prepare("SELECT id FROM chats WHERE user_id = ? AND chat_type = 'character' AND character_key = ?").all(handle, characterDirectory);
+        const chatRows = db.prepare('SELECT id FROM chats WHERE user_id = ? AND chat_type = \'character\' AND character_key = ?').all(handle, characterDirectory);
 
         // Return pseudo-filenames with .jsonl suffix for client compatibility
         const jsonFiles = chatRows.map(r => path.basename(r.id) + '.jsonl');
@@ -1530,7 +1530,6 @@ router.post('/chats', validateAvatarUrlMiddleware, async function (request, resp
     } catch (error) {
         console.error(error);
         return response.send({ error: true });
-
     }
 });
 

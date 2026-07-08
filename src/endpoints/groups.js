@@ -9,6 +9,7 @@ import { sync as writeFileAtomicSync, default as writeFileAtomic } from 'write-f
 import { color, tryParse } from '../util.js';
 import { getFileNameValidationFunction } from '../middleware/validateFileName.js';
 import { getDatabase } from './sqlite-manager.js';
+import { getChatInfo } from './chats.js';
 
 export const router = express.Router();
 
@@ -47,7 +48,7 @@ router.post('/all', (request, response) => {
     const files = fs.readdirSync(request.user.directories.groups).filter(x => path.extname(x) === '.json');
     const handle = request.user.profile.handle;
     const db = getDatabase(handle);
-    const chats = db.prepare("SELECT id FROM chats WHERE user_id = ? AND chat_type = 'group'").all(handle).map(r => path.basename(r.id) + '.jsonl');
+    const chats = db.prepare('SELECT id FROM chats WHERE user_id = ? AND chat_type = \'group\'').all(handle).map(r => path.basename(r.id) + '.jsonl');
 
     files.forEach(async function (file) {
         try {

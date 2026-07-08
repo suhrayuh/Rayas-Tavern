@@ -193,7 +193,7 @@ router.post('/update', async (request, response) => {
         const git = simpleGit({ baseDir: extensionPath, ...OPTIONS });
         const isRepo = await git.checkIsRepo(CheckRepoActions.IS_REPO_ROOT);
         if (!isRepo) {
-			if (bulk) {
+            if (bulk) {
                 return response.send({
                     skipped: true,
                     skipReason: 'not_a_git_repo',
@@ -203,11 +203,11 @@ router.post('/update', async (request, response) => {
                     remoteUrl: '',
                 });
             }
-			
+
             throw new Error(`Directory is not a Git repository at ${extensionPath}`);
         }
-		
-		const { isUpToDate, remoteUrl } = await checkIfRepoIsUpToDate(extensionPath);
+
+        const { isUpToDate, remoteUrl } = await checkIfRepoIsUpToDate(extensionPath);
         const currentBranch = await git.branch();
         if (!isUpToDate) {
             await git.pull('origin', currentBranch.current);

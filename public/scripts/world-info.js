@@ -370,9 +370,9 @@ async function generateWorldInfoEntrySummaries(entries) {
 
     const prompt = [
         'Generate lorebook retrieval summaries for the provided entries.',
-		'These summaries should describe what each entry CONTAINS.', 
-		'Use phrasing like: "A character profile describing...", "A relationship entry detailing...", "A location entry explaining...".', 
-		'Be concise and descriptive in each summary for retrieval.',
+        'These summaries should describe what each entry CONTAINS.',
+        'Use phrasing like: "A character profile describing...", "A relationship entry detailing...", "A location entry explaining...".',
+        'Be concise and descriptive in each summary for retrieval.',
         'Return JSON only. No markdown fences, no extra prose.',
         'Output format:',
         '{"summaries":[{"uid":123,"summary":"..."}]}',

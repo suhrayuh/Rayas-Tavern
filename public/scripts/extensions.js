@@ -1364,7 +1364,7 @@ async function updateExtension(extensionName, quiet, timeout = null, bulk = fals
             body: JSON.stringify({
                 extensionName,
                 global: getExtensionType(extensionName) === 'global',
-				bulk,
+                bulk,
             }),
         });
 

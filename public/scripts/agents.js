@@ -111,6 +111,10 @@ function upsertAgent(agent) {
     const index = settings.agents.findIndex(existing => existing.id === normalized.id);
 
     if (index >= 0) {
+        // Preserve the existing agent's priority so saving an edit does not
+        // reshuffle the agent order (normalizeAgent would otherwise reset it
+        // to the default priority, and the post-sort would be unstable).
+        normalized.priority = Number(settings.agents[index].priority);
         settings.agents[index] = normalized;
     } else {
         settings.agents.push(normalized);
@@ -1385,10 +1389,16 @@ function openAgentEditor(agentId = null) {
     populateConnectionProfileSelects();
     const agent = agentId ? getAgents().find(entry => entry.id === agentId) : createDefaultAgent();
     fillEditor(agent || createDefaultAgent());
+    // Hide the source card so it does not appear duplicated above the editor.
+    if (agentId) {
+        $(`#agents_list [data-agent-id="${CSS.escape(agentId)}"]`).addClass('displayNone');
+    }
     setEditorVisible(true);
 }
 
 function closeAgentEditor() {
+    // Restore any card hidden while editing.
+    $('#agents_list [data-agent-id]').removeClass('displayNone');
     setEditorVisible(false);
 }
 

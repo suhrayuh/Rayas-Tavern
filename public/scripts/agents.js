@@ -1194,6 +1194,13 @@ function renderAgentsList() {
         return;
     }
 
+    // If the editor is parked inside the list (in-slot edit), move it back to
+    // its safe home first so list.empty() does not destroy it.
+    const $editor = $('#agents_editor');
+    if ($editor.parent().is('#agents_list')) {
+        $editor.insertBefore('#agents_list');
+    }
+
     list.empty();
     const agents = getAgents().slice().sort((a, b) => Number(a.priority) - Number(b.priority));
 
@@ -1389,16 +1396,25 @@ function openAgentEditor(agentId = null) {
     populateConnectionProfileSelects();
     const agent = agentId ? getAgents().find(entry => entry.id === agentId) : createDefaultAgent();
     fillEditor(agent || createDefaultAgent());
-    // Hide the source card so it does not appear duplicated above the editor.
+    const $editor = $('#agents_editor');
     if (agentId) {
-        $(`#agents_list [data-agent-id="${CSS.escape(agentId)}"]`).addClass('displayNone');
+        const $card = $(`#agents_list [data-agent-id="${CSS.escape(agentId)}"]`);
+        // Replace the source card's slot with the editor so it appears in place,
+        // not floated at the top of the panel.
+        $card.addClass('displayNone');
+        $editor.insertBefore($card);
+    } else {
+        // New agent: drop the editor at the end of the list.
+        $editor.insertAfter('#agents_list');
     }
     setEditorVisible(true);
 }
 
 function closeAgentEditor() {
-    // Restore any card hidden while editing.
+    // Restore the editor to its original spot (before the list, inside the holder)
+    // and un-hide any card that was hidden while editing.
     $('#agents_list [data-agent-id]').removeClass('displayNone');
+    $('#agents_editor').insertBefore('#agents_list');
     setEditorVisible(false);
 }
 

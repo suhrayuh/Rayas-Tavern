@@ -270,6 +270,60 @@
             grid-column: 1 / -1;
         }
 
+        /* Test mode: model field spans full width, Model B column removed. */
+        .ap-config.is-test .ap-field:not(.ap-field--full) {
+            grid-column: 1 / -1;
+        }
+
+        /* Engraved-search combobox (character picker) */
+        .ap-combobox {
+            position: relative;
+        }
+
+        .ap-combobox-input {
+            width: 100%;
+        }
+
+        .ap-combobox-list {
+            position: absolute;
+            z-index: 40;
+            top: calc(100% + 4px);
+            left: 0;
+            right: 0;
+            max-height: 240px;
+            overflow-y: auto;
+            background: var(--ap-bg2);
+            border: 1px solid var(--ap-border-pk);
+            border-radius: 7px;
+            box-shadow: 0 12px 28px rgba(0, 0, 0, 0.5);
+            padding: 4px;
+        }
+
+        .ap-combobox-list .ap-combo-option {
+            padding: 9px 10px;
+            border-radius: 5px;
+            color: var(--ap-text);
+            font-family: var(--ap-font-body);
+            font-size: 14px;
+            cursor: pointer;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .ap-combobox-list .ap-combo-option:hover,
+        .ap-combobox-list .ap-combo-option.is-active {
+            background: color-mix(in srgb, var(--ap-pk) 20%, var(--ap-bg2));
+            color: var(--ap-lt);
+        }
+
+        .ap-combobox-list .ap-combo-empty {
+            padding: 9px 10px;
+            color: var(--ap-text2);
+            font-size: 13px;
+            font-family: var(--ap-font-body);
+        }
+
         .ap-field label {
             font-size: 10px;
             color: var(--ap-text2);
@@ -334,10 +388,53 @@
             background: color-mix(in srgb, var(--ap-pk) 16%, var(--ap-bg3));
         }
 
+        .ap-mode-toggle {
+            display: flex;
+            gap: 8px;
+        }
+
+        .ap-mode-btn {
+            flex: 1 1 0;
+            min-height: 40px;
+            padding: 0 12px;
+            border-radius: 7px;
+            border: 1px solid var(--ap-border-pk);
+            background: var(--ap-bg3);
+            color: var(--ap-text2);
+            font: inherit;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-size: 10px;
+            font-family: var(--ap-font-pixel);
+            transition: color 160ms ease, border-color 160ms ease, background 160ms ease;
+        }
+
+        .ap-mode-btn:hover {
+            border-color: var(--ap-pk);
+            color: var(--ap-text);
+        }
+
+        .ap-mode-btn.is-active {
+            color: var(--ap-lt);
+            background: color-mix(in srgb, var(--ap-pk) 18%, var(--ap-bg3));
+            border-color: var(--ap-pk);
+            box-shadow: 0 0 12px color-mix(in srgb, var(--ap-pk) 36%, transparent);
+        }
+
         .ap-status {
             font-size: 12px;
             color: var(--ap-text2);
             font-family: var(--ap-font-body);
+        }
+
+        .ap-chat-note {
+            font-size: 10px;
+            color: var(--ap-text2);
+            line-height: 1.4;
+            font-family: var(--ap-font-body);
+            padding: 4px 2px 0;
+            opacity: 0.8;
         }
 
         .ap-context-strip {
@@ -396,6 +493,14 @@
             grid-template-columns: 1fr 1fr;
             min-height: 0;
             flex: 1;
+        }
+
+        .ap-panels.is-single {
+            grid-template-columns: 1fr;
+        }
+
+        .ap-panels.is-single .ap-panel:first-child {
+            border-right: none;
         }
 
         .ap-panel {
@@ -558,7 +663,7 @@
             <div class="ap-topbar">
                 <span class="ap-topbar-title">✦ Agent Playground</span>
                 <span class="ap-pill"><span class="ap-pill-dot"></span><span id="agentplayground_top_model_a">Model A</span></span>
-                <span class="ap-pill"><span class="ap-pill-dot"></span><span id="agentplayground_top_model_b">Model B</span></span>
+                <span class="ap-pill" id="agentplayground_top_model_b_pill"><span class="ap-pill-dot"></span><span id="agentplayground_top_model_b">Model B</span></span>
                 <span class="ap-pill"><span class="ap-pill-dot"></span><span id="agentplayground_top_chat">No chat selected</span></span>
             </div>
 
@@ -569,28 +674,57 @@
                     <select id="agentplayground_agent" class="ap-select displayNone"></select>
 
                     <div class="ap-section-label">Context Window</div>
-                    <label class="ap-field">
+                    <div class="ap-field ap-field--full">
+                        <label for="agentplayground_character">Character</label>
+                        <div class="ap-combobox" id="agentplayground_character_combo">
+                            <input id="agentplayground_character" class="ap-input ap-combobox-input" type="text" placeholder="search characters..." autocomplete="off" spellcheck="false">
+                            <div class="ap-combobox-list displayNone" id="agentplayground_character_list"></div>
+                        </div>
+                    </div>
+                    <label class="ap-field ap-field--full">
                         <label for="agentplayground_chat">Chat</label>
                         <select id="agentplayground_chat" class="ap-select"></select>
                     </label>
+                    <div id="agentplayground_chat_note" class="ap-chat-note"></div>
                     <div class="ap-stat"><span class="ap-stat-label">prior messages</span><span id="agentplayground_stat_prior" class="ap-stat-value">0</span></div>
                     <div class="ap-stat"><span class="ap-stat-label">current msg</span><span id="agentplayground_stat_current" class="ap-stat-value">0 chars</span></div>
                     <div class="ap-stat"><span class="ap-stat-label">prompt size</span><span id="agentplayground_stat_prompt" class="ap-stat-value">0 chars</span></div>
                 </aside>
 
                 <section class="ap-main">
-                    <div class="ap-config">
+                    <div class="ap-config" id="agentplayground_config">
+                        <div class="ap-field ap-field--full">
+                            <label for="agentplayground_config_select">Saved Configs</label>
+                            <select id="agentplayground_config_select" class="ap-select"></select>
+                        </div>
+                        <div class="ap-field ap-field--full">
+                            <label for="agentplayground_config_label">Config Name</label>
+                            <input id="agentplayground_config_label" class="ap-input" type="text" placeholder="e.g. OpenRouter Sonnet">
+                        </div>
+                        <div class="ap-field ap-field--full">
+                            <label>Mode</label>
+                            <div class="ap-mode-toggle">
+                                <button id="agentplayground_mode_compare" class="ap-mode-btn is-active" type="button">Compare (A vs B)</button>
+                                <button id="agentplayground_mode_test" class="ap-mode-btn" type="button">Test (single)</button>
+                            </div>
+                        </div>
                         <div class="ap-field ap-field--full">
                             <label for="agentplayground_provider_url">Provider</label>
                             <input id="agentplayground_provider_url" class="ap-input" type="url" placeholder="https://openrouter.ai/api/v1">
                         </div>
                         <div class="ap-field">
-                            <label for="agentplayground_model_a">Model A</label>
-                            <input id="agentplayground_model_a" class="ap-input" type="text" placeholder="anthropic/claude-opus-4-1">
+                            <label for="agentplayground_model_a"><span id="agentplayground_model_a_label">Model A</span></label>
+                            <div class="ap-combobox" id="agentplayground_model_a_combo">
+                                <input id="agentplayground_model_a" class="ap-input ap-combobox-input" type="text" placeholder="select or type a model id" autocomplete="off" spellcheck="false">
+                                <div class="ap-combobox-list displayNone" id="agentplayground_model_a_list"></div>
+                            </div>
                         </div>
-                        <div class="ap-field">
+                        <div class="ap-field" id="agentplayground_model_b_field">
                             <label for="agentplayground_model_b">Model B</label>
-                            <input id="agentplayground_model_b" class="ap-input" type="text" placeholder="google/gemini-2.5-pro">
+                            <div class="ap-combobox" id="agentplayground_model_b_combo">
+                                <input id="agentplayground_model_b" class="ap-input ap-combobox-input" type="text" placeholder="select or type a model id" autocomplete="off" spellcheck="false">
+                                <div class="ap-combobox-list displayNone" id="agentplayground_model_b_list"></div>
+                            </div>
                         </div>
                         <div class="ap-field ap-field--full">
                             <label for="agentplayground_provider_key">API Key</label>
@@ -598,6 +732,8 @@
                         </div>
                         <div class="ap-actions">
                             <button id="agentplayground_save_config" class="ap-button">Save Config</button>
+                            <button id="agentplayground_new_config" class="ap-button">+ New</button>
+                            <button id="agentplayground_delete_config" class="ap-button">Delete</button>
                             <button id="agentplayground_run" class="ap-button ap-button--primary">▶ Run Both</button>
                             <span id="agentplayground_key_state" class="ap-status">API key not saved yet.</span>
                             <span id="agentplayground_status" class="ap-status">Ready.</span>
@@ -619,7 +755,7 @@
                         </div>
                     </div>
 
-                    <div class="ap-panels">
+                    <div class="ap-panels" id="agentplayground_panels">
                         <article class="ap-panel">
                             <div class="ap-panel-header">
                                 <span class="ap-panel-model" id="agentplayground_profile_a_title">Model A</span>
@@ -637,7 +773,7 @@
                             </div>
                         </article>
 
-                        <article class="ap-panel">
+                        <article class="ap-panel" id="agentplayground_panel_b">
                             <div class="ap-panel-header">
                                 <span class="ap-panel-model" id="agentplayground_profile_b_title">Model B</span>
                                 <span class="ap-panel-badge" id="agentplayground_profile_b_meta">Idle</span>

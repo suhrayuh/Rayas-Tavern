@@ -5835,7 +5835,7 @@
                             <i class="fa-solid fa-plus"></i>
                             <span data-i18n="New Agent">New Agent</span>
                         </div>
-                        <a id="agents_open_playground" class="menu_button menu_button_icon agents-header-button" href="/agentplayground" target="_blank" rel="noopener noreferrer" title="Open Agent Playground">
+                        <a id="agents_open_playground" class="menu_button menu_button_icon agents-header-button" href="/agentplayground" target="_blank" rel="noopener noreferrer" title="Open Agent Playground" onclick="(function(){try{const chid=window.main_chid;const av=chid!=null&&window.characters&&window.characters[chid]?window.characters[chid].avatar:'';const file=window.chat_filename||'';const q=new URLSearchParams();if(av)q.set('avatar',av);if(file)q.set('file',file);this.href='/agentplayground'+(q.toString()?'?'+q.toString():'');}catch(e){this.href='/agentplayground';}})()">
                             <i class="fa-solid fa-up-right-from-square"></i>
                             <span>Open Playground</span>
                         </a>

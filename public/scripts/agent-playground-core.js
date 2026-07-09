@@ -48,7 +48,7 @@ export function normalizeAgent(rawAgent = {}) {
     };
 
     const phase = ['pre', 'post', 'manual'].includes(String(rawAgent.phase ?? '')) ? String(rawAgent.phase) : defaults.phase;
-    const outputType = ['inject', 'rewrite', 'append', 'metadata'].includes(String(rawAgent?.outputMode?.type ?? ''))
+    const outputType = ['inject', 'rewrite', 'append', 'metadata', 'patch'].includes(String(rawAgent?.outputMode?.type ?? ''))
         ? String(rawAgent.outputMode.type)
         : defaults.outputMode.type;
     const outputRole = ['system', 'user', 'assistant'].includes(String(rawAgent?.outputMode?.role ?? ''))
@@ -340,4 +340,52 @@ export function buildAgentPrompt(agent, context) {
     }
 
     return sections.filter(Boolean).join('\n\n');
+}
+
+/**
+ * Parse a patch-mode agent response (a JSON object like {patches:[{find,replace}]})
+ * and apply the patches onto the original text, returning the fully merged text.
+ * If the JSON can't be parsed or is empty, returns the raw text unchanged so the
+ * caller can fall back to displaying it as-is.
+ */
+export function applyPatches(original, patchesText) {
+    const raw = String(patchesText ?? '').trim();
+    if (!raw) {
+        return raw;
+    }
+
+    let parsed;
+    try {
+        parsed = JSON.parse(raw);
+    } catch {
+        // The model may have wrapped the JSON in code fences or prose; try to
+        // extract the first balanced {...} block before giving up.
+        const match = raw.match(/\{[\s\S]*\}/);
+        if (!match) {
+            return raw;
+        }
+        try {
+            parsed = JSON.parse(match[0]);
+        } catch {
+            return raw;
+        }
+    }
+
+    const patches = Array.isArray(parsed?.patches) ? parsed.patches : [];
+    if (!patches.length) {
+        return raw;
+    }
+
+    let result = String(original ?? '');
+    for (const patch of patches) {
+        const find = String(patch?.find ?? '');
+        const replace = String(patch?.replace ?? '');
+        if (!find) {
+            continue;
+        }
+        // Replace all non-overlapping occurrences of this find string.
+        result = result.split(find).join(replace);
+    }
+
+    return result;
 }

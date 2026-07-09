@@ -239,7 +239,7 @@ function getOutputLabel(agent) {
 
 function getInputModeSummary(agent) {
     const parts = [];
-    if (agent.inputMode.includeChat) parts.push(`Chat ${Number(agent.pastMessageCount)}`);
+    if (agent.inputMode.includeChat) parts.push(`Ctx ${Number(agent.pastMessageCount)}`);
     if (agent.inputMode.includeCharacter) parts.push('Character');
     if (agent.inputMode.includePersona) parts.push('Persona');
     if (agent.inputMode.includeWorldInfo) parts.push('World Info');

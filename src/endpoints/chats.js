@@ -21,7 +21,7 @@ import {
     readFirstLine,
     isPathUnderParent,
 } from '../util.js';
-import { getDatabase, backupDatabase } from './sqlite-manager.js';
+import { getDatabase } from './sqlite-manager.js';
 
 const isBackupEnabled = !!getConfigValue('backups.chat.enabled', true, 'boolean');
 const maxTotalChatBackups = Number(getConfigValue('backups.chat.maxTotalBackups', -1, 'number'));

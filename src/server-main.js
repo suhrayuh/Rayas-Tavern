@@ -76,6 +76,7 @@ import { redirectDeprecatedEndpoints, ServerStartup, setupPrivateEndpoints } fro
 import { diskCache } from './endpoints/characters.js';
 import { migrateFlatSecrets } from './endpoints/secrets.js';
 import { migrateGroupChatsMetadataFormat } from './endpoints/groups.js';
+import { startDatabaseBackupTimer, backupAllUserDatabases } from './endpoints/sqlite-manager.js';
 
 // Work around a node v20.0.0, v20.1.0, and v20.2.0 bug. The issue was fixed in v20.3.0.
 // https://github.com/nodejs/node/issues/47822#issuecomment-1564708870
@@ -341,6 +342,16 @@ async function preSetupTasks() {
         if (typeof cleanupPlugins === 'function') {
             await cleanupPlugins();
         }
+        // Flush a final SQLite database file backup before closing (best-effort).
+        // backupAllUserDatabases skips each user individually if THAT user already
+        // has a recent backup (avoids double-up on quick close/reopen cycles
+        // without suppressing other users).
+        try {
+            const shutdownMinAgeMs = Number(getConfigValue('backups.database.shutdownMinAgeMs', 1_800_000, 'number')); // 30min
+            await backupAllUserDatabases({ maxBackups: Number(getConfigValue('backups.database.maxBackups', 5, 'number')), minAgeMs: shutdownMinAgeMs });
+        } catch (err) {
+            console.error('[sqlite] shutdown database backup failed', err);
+        }
         diskCache.dispose();
         setWindowTitle(consoleTitle);
         process.exit();
@@ -466,6 +477,22 @@ async function postSetupTasks(result) {
 
     setupLogLevel();
     serverEvents.emit(EVENT_NAMES.SERVER_STARTED, { url: browserLaunchUrl });
+
+    // Kick off periodic SQLite database file backups (startup + interval + shutdown).
+    const dbBackupEnabled = !!getConfigValue('backups.database.enabled', true, 'boolean');
+    if (dbBackupEnabled) {
+        const maxBackups = Number(getConfigValue('backups.database.maxBackups', 5, 'number'));
+        const intervalMs = Number(getConfigValue('backups.database.intervalMs', 21_600_000, 'number'));
+        const minAgeMs = Number(getConfigValue('backups.database.startupMinAgeMs', 3_600_000, 'number')); // 1h
+        // Don't spam a full 3GB copy on every restart: backupAllUserDatabases
+        // skips each user individually if THAT user already has a recent backup.
+        await backupAllUserDatabases({ maxBackups, minAgeMs }).catch(err => {
+            console.error('[sqlite] startup database backup failed', err);
+        });
+        // Start the interval timer AFTER the startup backup so its baseline sees
+        // the fresh backup (avoids a 1s double-fire race).
+        startDatabaseBackupTimer({ maxBackups, intervalMs });
+    }
 }
 
 /**

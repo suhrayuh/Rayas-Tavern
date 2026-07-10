@@ -152,7 +152,11 @@ function backupUserSettings(handle, preventDuplicates) {
     }
 
     fs.copyFileSync(sourceFile, backupFile);
-    removeOldBackups(userDirectories.backups, `settings_${handle}`);
+    // Cap to 5 (matches the chats.db backup rotation) instead of the global
+    // backups.common.numberOfBackups default of 50, which let settings backups
+    // pile up to ~50 copies in the backups folder.
+    const maxSettingsBackups = Number(getConfigValue('backups.database.maxBackups', 5, 'number'));
+    removeOldBackups(userDirectories.backups, `settings_${handle}`, maxSettingsBackups);
 }
 
 /**

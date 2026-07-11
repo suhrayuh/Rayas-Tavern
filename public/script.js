@@ -9856,6 +9856,12 @@ function openAlternateGreetings() {
 
     const template = $('#alternate_greetings_template .alternate_grettings').clone();
     const getArray = () => menu_type == 'create' ? create_save.alternate_greetings : characters[chid].data.alternate_greetings;
+    const getNames = () => {
+        const base = menu_type == 'create' ? create_save.extensions : characters[chid]?.data?.extensions;
+        if (!base) return [];
+        if (!Array.isArray(base.alternate_greetings_names)) base.alternate_greetings_names = [];
+        return base.alternate_greetings_names;
+    };
     const popup = new Popup(template, POPUP_TYPE.TEXT, '', {
         wide: true,
         large: true,
@@ -9868,16 +9874,17 @@ function openAlternateGreetings() {
     });
 
     for (let index = 0; index < getArray().length; index++) {
-        addAlternateGreeting(template, getArray()[index], index, getArray, popup);
+        addAlternateGreeting(template, getArray()[index], index, getArray, getNames, popup);
     }
 
     template.find('.add_alternate_greeting').on('click', function () {
         const array = getArray();
         const index = array.length;
         array.push('');
-        addAlternateGreeting(template, '', index, getArray, popup);
+        getNames().push('');
+        addAlternateGreeting(template, '', index, getArray, getNames, popup);
         updateAlternateGreetingsHintVisibility(template);
-        const list = template.find('.alternate_greetings_list');
+            const list = template.find('.alternate_greetings_list');
         list.scrollTop(list.prop('scrollHeight'));
     });
 
@@ -9891,9 +9898,10 @@ function openAlternateGreetings() {
  * @param {string} greeting
  * @param {number} index
  * @param {() => any[]} getArray
+ * @param {() => string[]} getNames
  * @param {Popup} popup
  */
-function addAlternateGreeting(template, greeting, index, getArray, popup) {
+function addAlternateGreeting(template, greeting, index, getArray, getNames, popup) {
     const greetingBlock = $('#alternate_greeting_form_template .alternate_greeting').clone();
     greetingBlock.attr('data-index', index);
     greetingBlock.find('.alternate_greeting_text')
@@ -9903,6 +9911,14 @@ function addAlternateGreeting(template, greeting, index, getArray, popup) {
             const array = getArray();
             array[index] = value;
         }).val(greeting);
+    greetingBlock.find('.alternate_greeting_name')
+        .on('click', (e) => e.stopPropagation())
+        .on('input', function () {
+            const names = getNames();
+            if (!names) return;
+            names[index] = $(this).val();
+        })
+        .val(getNames()[index] ?? '');
     greetingBlock.find('.editor_maximize').attr('data-for', `alternate_greeting_${index}`);
     greetingBlock.find('.greeting_index').text(index + 1);
     greetingBlock.find('.delete_alternate_greeting').on('click', async function (event) {
@@ -9916,6 +9932,8 @@ function addAlternateGreeting(template, greeting, index, getArray, popup) {
 
         const array = getArray();
         array.splice(index, 1);
+        const names = getNames();
+        if (names) names.splice(index, 1);
 
         // We need to reopen the popup to update the index numbers
         await popup.complete(POPUP_RESULT.AFFIRMATIVE);
@@ -9928,20 +9946,15 @@ function addAlternateGreeting(template, greeting, index, getArray, popup) {
         handleMoveAlternateGreeting(event, 1);
     });
 
-    /**
-     * Handles moving an alternate greeting up or down in the list.
-     * @param {JQuery.ClickEvent} event - The click event
-     * @param {number} direction - Direction to move: -1 for up, 1 for down
-     */
     function handleMoveAlternateGreeting(event, direction) {
         event.preventDefault();
         event.stopPropagation();
 
         const array = getArray();
+        const names = getNames();
         const index = Number(greetingBlock.attr('data-index'));
         const newIndex = index + direction;
 
-        // Check bounds
         if (direction === -1 && index <= 0) {
             return;
         }
@@ -9949,15 +9962,17 @@ function addAlternateGreeting(template, greeting, index, getArray, popup) {
             return;
         }
 
-        // Swap the greetings
         [array[index], array[newIndex]] = [array[newIndex], array[index]];
+        if (names) {
+            [names[index], names[newIndex]] = [names[newIndex], names[index]];
+        }
 
-        // Update current greeting
         greetingBlock.find('.alternate_greeting_text').val(array[index]);
+        greetingBlock.find('.alternate_greeting_name').val(names ? names[index] ?? '' : '');
 
-        // Update adjacent greeting
         const adjacentGreetingBlock = template.find(`.alternate_greeting[data-index="${newIndex}"]`);
         adjacentGreetingBlock.find('.alternate_greeting_text').val(array[newIndex]);
+        adjacentGreetingBlock.find('.alternate_greeting_name').val(names ? names[newIndex] ?? '' : '');
     }
 
     template.find('.alternate_greetings_list').append(greetingBlock);
@@ -9977,6 +9992,21 @@ export async function createOrEditCharacter(e) {
     const formData = new FormData(/** @type {HTMLFormElement} */($('#form_create').get(0)));
     formData.set('fav', String(fav_ch_checked));
     const isNewChat = e instanceof CustomEvent && e.type === 'newChat';
+
+    // Ensure extensions.alternate_greetings_names is initialized in create_save and characters[chid].data.extensions
+    if (menu_type === 'create') {
+        if (!create_save.extensions) {
+            create_save.extensions = {};
+        }
+        if (!Array.isArray(create_save.extensions.alternate_greetings_names)) {
+            create_save.extensions.alternate_greetings_names = [];
+        }
+    } else {
+        const chid = $('.open_alternate_greetings').data('chid');
+        if (characters[chid] && characters[chid].data?.extensions && !Array.isArray(characters[chid].data.extensions.alternate_greetings_names)) {
+            characters[chid].data.extensions.alternate_greetings_names = [];
+        }
+    }
 
     const rawFile = formData.get('avatar');
     if (rawFile instanceof File) {
@@ -10100,6 +10130,11 @@ export async function createOrEditCharacter(e) {
                 for (const value of characters[chid].data.alternate_greetings) {
                     formData.append('alternate_greetings', value);
                 }
+            }
+
+            formData.delete('extensions');
+            if (characters[chid] && characters[chid]?.data?.extensions) {
+                formData.append('extensions', JSON.stringify(characters[chid].data.extensions));
             }
 
             const fetchResult = await fetch(url, {

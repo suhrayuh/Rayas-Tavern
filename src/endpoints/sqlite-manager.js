@@ -115,18 +115,29 @@ export async function backupDatabase(userId, opts = {}) {
     // settings_default-user_20260709-173941.json) — not UTC, so it reads naturally.
     const stamp = generateTimestamp();
     const dest = path.join(backupDir, `chatsdb_${stamp}.db`);
+    // Copy to a temp name first, then rename into place. On a full disk the
+    // copy can fail partway and leave a truncated chatsdb_*.db that rotation
+    // would treat as a valid (and mtime-poisoning) backup — so we stage it.
+    const tmp = `${dest}.part`;
 
-    // After the TRUNCATE checkpoint above, all WAL data is folded into the main
-    // chats.db, so the .db file alone is a complete, restorable snapshot. Copying
-    // the (now-empty) -wal/-shm sidecars would only litter the folder AND leak,
-    // since rotation only prunes files matching chatsdb_*.db (not *-wal/*-shm).
-    await fs.promises.copyFile(dbPath, dest);
-    // copyFile preserves the SOURCE file's mtime on Windows, which makes the
-    // explorer "Date modified" column show when chats.db was last written (e.g.
-    // 6:52) rather than when the backup was actually taken. Stamp the dest mtime
-    // to "now" so it matches the filename and the interval baseline stays correct.
-    const now = Date.now();
-    await fs.promises.utimes(dest, now / 1000, now / 1000);
+    try {
+        await fs.promises.copyFile(dbPath, tmp);
+        // copyFile preserves the SOURCE file's mtime on Windows, which makes the
+        // explorer "Date modified" column show when chats.db was last written
+        // rather than when the backup was actually taken. Stamp the dest mtime
+        // to "now" so it matches the filename and the interval baseline stays
+        // correct.
+        const now = Date.now();
+        await fs.promises.utimes(tmp, now / 1000, now / 1000);
+        // Atomic move into place (rename is instant + atomic on the same volume).
+        await fs.promises.rename(tmp, dest);
+    } catch (err) {
+        // Best-effort cleanup of any partial so it isn't mistaken for a backup.
+        try {
+            await fs.promises.rm(tmp, { force: true });
+        } catch { /* ignore */ }
+        throw err;
+    }
 
     await rotateBackups(backupDir, maxBackups);
     return dest;
@@ -179,6 +190,8 @@ async function rotateBackups(backupDir, maxBackups) {
 export async function backupAllUserDatabases(opts = {}) {
     const dataRoot = 'data';
     let userDirs = [];
+    const failed = [];
+    lastBackupFailed = false;
     try {
         userDirs = fs.readdirSync(dataRoot, { withFileTypes: true })
             .filter(entry => entry.isDirectory())
@@ -206,9 +219,19 @@ export async function backupAllUserDatabases(opts = {}) {
         }
         tasks.push(backupDatabase(userId, opts).catch(err => {
             console.error(`[sqlite] failed to back up database for ${userId}`, err);
+            // Surface the failure so the caller (interval tick) can retry soon
+            // instead of waiting a full 6h — e.g. disk full (ENOSPC) clears.
+            failed.push(userId);
         }));
     }
     await Promise.all(tasks);
+
+    // If any backup failed (e.g. ENOSPC / disk full), ask the interval scheduler
+    // to retry in 30 min rather than waiting the full interval. ST clears space
+    // long before then and we don't want to lose up to 6h of backup coverage.
+    if (failed.length > 0) {
+        lastBackupFailed = true;
+    }
 }
 
 const DB_BACKUP_INTERVAL_MS = Number(process.env.AGENT_PLAYGROUND_DB_BACKUP_INTERVAL_MS ?? 21_600_000); // 6h default
@@ -307,6 +330,10 @@ export function hasRecentBackup(maxAgeMs) {
 
 let dbBackupTimer = null;
 let dbBackupOpts = {};
+// Set when the last backup pass had any failure (e.g. disk full). The scheduler
+// uses this to retry in DB_BACKUP_RETRY_MS instead of waiting the full interval.
+let lastBackupFailed = false;
+const DB_BACKUP_RETRY_MS = Number(process.env.AGENT_PLAYGROUND_DB_BACKUP_RETRY_MS ?? 30 * 60_000); // 30min
 
 /**
  * Runs a backup pass, then schedules the NEXT one based on wall-clock time since
@@ -328,6 +355,17 @@ function scheduleNextBackup() {
         return;
     }
     const last = getLastBackupMtime();
+    // If the last pass failed (e.g. disk full), retry soon (30min) rather than
+    // waiting the full interval — space is usually cleared quickly and we don't
+    // want to lose up to 6h of backup coverage on a transient error.
+    if (lastBackupFailed) {
+        const delay = Math.max(1000, DB_BACKUP_RETRY_MS);
+        dbBackupTimer = setTimeout(backupTick, delay, dbBackupOpts);
+        if (typeof dbBackupTimer.unref === 'function') {
+            dbBackupTimer.unref();
+        }
+        return;
+    }
     // If no backup exists yet, wait the full interval for the first scheduled
     // one (the startup hook handles the immediate first backup). Never collapse
     // to ~1s here, or it double-fires right after the startup backup.

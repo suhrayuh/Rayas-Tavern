@@ -76,7 +76,8 @@ import { redirectDeprecatedEndpoints, ServerStartup, setupPrivateEndpoints } fro
 import { diskCache } from './endpoints/characters.js';
 import { migrateFlatSecrets } from './endpoints/secrets.js';
 import { migrateGroupChatsMetadataFormat } from './endpoints/groups.js';
-import { startDatabaseBackupTimer, backupAllUserDatabases } from './endpoints/sqlite-manager.js';
+import { startDatabaseBackupTimer, backupAllUserDatabases, getDatabase } from './endpoints/sqlite-manager.js';
+import { migrateUserChats } from './endpoints/chat-migrate.js';
 
 // Work around a node v20.0.0, v20.1.0, and v20.2.0 bug. The issue was fixed in v20.3.0.
 // https://github.com/nodejs/node/issues/47822#issuecomment-1564708870
@@ -299,6 +300,115 @@ redirectDeprecatedEndpoints(app);
 setupPrivateEndpoints(app);
 
 /**
+ * One-time automatic migration of legacy JSONL chats into SQLite.
+ *
+ * Runs at startup for any user who still has data/<user>/chats/ or
+ * data/<user>/groupChats/ but has not yet been migrated (tracked by a marker
+ * file). Idempotent and best-effort: a failure for one user is logged and
+ * skipped, never aborting server startup. Called before the startup DB backup
+ * so freshly-migrated data is included in the first backup.
+ */
+/**
+ * Returns true if the user's SQLite database already contains migrated chats.
+ * Used to skip re-migration for users who already ran it (their legacy JSONL
+ * dirs may still be on disk, but the DB is populated).
+ * @param {string} userId
+ * @returns {boolean}
+ */
+function userDbHasChats(userId) {
+    try {
+        const db = getDatabase(userId);
+        const row = db.prepare('SELECT COUNT(*) AS c FROM chats WHERE user_id = ?').get(userId);
+        return (row?.c || 0) > 0;
+    } catch {
+        return false;
+    }
+}
+
+async function runChatMigrationIfNeeded() {
+    const migrationsDir = path.join('data', '_migrations');
+    const markerPath = path.join(migrationsDir, 'sqlite-chats.json');
+
+    /** @type {{ migratedAt: string|null, users: string[] }} */
+    let marker = { migratedAt: null, users: [] };
+    try {
+        if (fs.existsSync(markerPath)) {
+            marker = JSON.parse(fs.readFileSync(markerPath, 'utf8'));
+        }
+    } catch {
+        // Corrupt marker — start fresh, re-migrate everyone.
+        marker = { migratedAt: null, users: [] };
+    }
+    const doneUsers = new Set(Array.isArray(marker.users) ? marker.users : []);
+    let changed = false;
+    let migratedAny = false;
+
+    console.log('[migrate] Checking chat migration status...');
+
+    let userDirs = [];
+    try {
+        userDirs = fs.readdirSync('data', { withFileTypes: true })
+            .filter(e => e.isDirectory() && !e.name.startsWith('.') && !e.name.startsWith('_'))
+            .map(e => e.name);
+    } catch {
+        return;
+    }
+
+    for (const userId of userDirs) {
+        if (doneUsers.has(userId)) {
+            continue;
+        }
+
+        const userDir = path.join('data', userId);
+        const hasLegacy = fs.existsSync(path.join(userDir, 'chats')) || fs.existsSync(path.join(userDir, 'groupChats'));
+
+        if (!hasLegacy) {
+            // No legacy chats for this user — record as done so we don't re-scan.
+            doneUsers.add(userId);
+            changed = true;
+            continue;
+        }
+
+        if (userDbHasChats(userId)) {
+            // DB already populated from a previous migration — nothing to do.
+            console.log(`[migrate] ${userId}: already migrated (SQLite database populated), skipping.`);
+            doneUsers.add(userId);
+            changed = true;
+            continue;
+        }
+
+        migratedAny = true;
+        try {
+            console.log(`[migrate] Migrating legacy chats for ${userId}...`);
+            const { migrated, failed } = await migrateUserChats(userId);
+            console.log(`[migrate] ${userId}: ${migrated} chats migrated, ${failed} failed`);
+        } catch (err) {
+            console.error(`[migrate] Failed to migrate ${userId}:`, err);
+        }
+
+        doneUsers.add(userId);
+        changed = true;
+    }
+
+    if (migratedAny) {
+        console.log('✅ Chat migration complete. Safely running SQLite database.');
+    } else {
+        console.log('✅ Safely running SQLite database — chat migration already complete, skipping.');
+    }
+
+    if (changed) {
+        try {
+            fs.mkdirSync(migrationsDir, { recursive: true });
+            marker.migratedAt = marker.migratedAt ?? new Date().toISOString();
+            marker.users = [...doneUsers];
+            fs.writeFileSync(markerPath, JSON.stringify(marker, null, 2));
+        } catch {
+            // Marker is best-effort; migration itself already succeeded.
+        }
+    }
+}
+
+/**
  * Tasks that need to be run before the server starts listening.
  * @returns {Promise<void>}
  */
@@ -307,7 +417,7 @@ async function preSetupTasks() {
 
     // Print formatted header
     console.log();
-    console.log(`SillyTavern ${version.pkgVersion}`);
+    console.log(`Rayas Tavern ${version.pkgVersion}`);
     if (version.gitBranch && version.commitDate) {
         const date = new Date(version.commitDate);
         const localDate = date.toLocaleString('en-US', { timeZoneName: 'short' });
@@ -330,6 +440,13 @@ async function preSetupTasks() {
     await settingsInit();
     await statsInit();
 
+    // Auto-migrate legacy JSONL chats into SQLite (best-effort, never blocks startup).
+    try {
+        await runChatMigrationIfNeeded();
+    } catch (err) {
+        console.error('[migrate] Startup chat migration failed', err);
+    }
+
     const pluginsDirectory = path.join(serverDirectory, 'plugins');
     const cleanupPlugins = await loadPlugins(app, pluginsDirectory);
     const consoleTitle = process.title;
@@ -348,7 +465,7 @@ async function preSetupTasks() {
         // without suppressing other users).
         try {
             const shutdownMinAgeMs = Number(getConfigValue('backups.database.shutdownMinAgeMs', 1_800_000, 'number')); // 30min
-            await backupAllUserDatabases({ maxBackups: Number(getConfigValue('backups.database.maxBackups', 5, 'number')), minAgeMs: shutdownMinAgeMs });
+            await backupAllUserDatabases({ maxBackups: Number(getConfigValue('backups.database.maxBackups', 2, 'number')), minAgeMs: shutdownMinAgeMs });
         } catch (err) {
             console.error('[sqlite] shutdown database backup failed', err);
         }
@@ -446,9 +563,9 @@ async function postSetupTasks(result) {
         setInterval(writeHeartbeat, intervalMs).unref();
     }
 
-    setWindowTitle('SillyTavern WebServer');
+    setWindowTitle('Rayas Tavern WebServer');
 
-    let logListen = 'SillyTavern is listening on';
+    let logListen = 'Rayas Tavern is listening on';
 
     if (result.useIPv6 && !result.v6Failed) {
         logListen += color.green(
@@ -462,7 +579,7 @@ async function postSetupTasks(result) {
         );
     }
 
-    const goToLog = `Go to: ${color.blue(browserLaunchUrl)} to open SillyTavern`;
+    const goToLog = `Go to: ${color.blue(browserLaunchUrl)} to open Rayas Tavern`;
     const plainGoToLog = removeColorFormatting(goToLog);
 
     console.log(logListen);
@@ -481,7 +598,7 @@ async function postSetupTasks(result) {
     // Kick off periodic SQLite database file backups (startup + interval + shutdown).
     const dbBackupEnabled = !!getConfigValue('backups.database.enabled', true, 'boolean');
     if (dbBackupEnabled) {
-        const maxBackups = Number(getConfigValue('backups.database.maxBackups', 5, 'number'));
+        const maxBackups = Number(getConfigValue('backups.database.maxBackups', 2, 'number'));
         const intervalMs = Number(getConfigValue('backups.database.intervalMs', 21_600_000, 'number'));
         const minAgeMs = Number(getConfigValue('backups.database.startupMinAgeMs', 3_600_000, 'number')); // 1h
         // Don't spam a full 3GB copy on every restart: backupAllUserDatabases

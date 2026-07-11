@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
+import { openDatabase } from './sqlite-backend.js';
 import { generateTimestamp } from '../util.js';
 
 /**
@@ -77,10 +77,7 @@ export function getDatabase(userId) {
     }
 
     const dbPath = path.join(userDir, 'chats.db');
-    const db = new DatabaseSync(dbPath, { enableForeignKeyConstraints: true });
-    db.exec('PRAGMA journal_mode = WAL;');
-    db.exec('PRAGMA foreign_keys = ON;');
-    db.exec(SCHEMA);
+    const db = openDatabase(dbPath, SCHEMA);
 
     dbCache.set(userId, db);
     return db;
@@ -101,7 +98,7 @@ export function getDatabase(userId) {
  * @param {number} [opts.maxBackups=5]
  */
 export async function backupDatabase(userId, opts = {}) {
-    const maxBackups = Number(opts.maxBackups ?? 5);
+    const maxBackups = Number(opts.maxBackups ?? 2);
     const db = getDatabase(userId);
     const userDir = path.join('data', userId);
     const dbPath = path.join(userDir, 'chats.db');

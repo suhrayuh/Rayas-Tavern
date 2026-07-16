@@ -38,52 +38,58 @@ export async function migrateGroupChatsMetadataFormat(userDirectories) {
     // No-op: chats are now SQLite-backed. See scripts/migrate-chats-to-sqlite.js
 }
 
-router.post('/all', (request, response) => {
-    const groups = [];
+router.post('/all', async (request, response) => {
+    try {
+        const handle = request.user.profile.handle;
+        const userDir = request.user.directories.groups;
 
-    if (!fs.existsSync(request.user.directories.groups)) {
-        fs.mkdirSync(request.user.directories.groups);
-    }
+        if (!fs.existsSync(userDir)) {
+            fs.mkdirSync(userDir, { recursive: true });
+        }
 
-    const files = fs.readdirSync(request.user.directories.groups).filter(x => path.extname(x) === '.json');
-    const handle = request.user.profile.handle;
-    const db = getDatabase(handle);
-    const chats = db.prepare('SELECT id FROM chats WHERE user_id = ? AND chat_type = \'group\'').all(handle).map(r => path.basename(r.id) + '.jsonl');
+        const files = fs.readdirSync(userDir).filter(x => path.extname(x) === '.json');
+        const db = getDatabase(handle);
+        const chats = db.prepare('SELECT id FROM chats WHERE user_id = ? AND chat_type = \'group\'').all(handle).map(r => path.basename(r.id) + '.jsonl');
 
-    files.forEach(async function (file) {
-        try {
-            const filePath = path.join(request.user.directories.groups, file);
-            const fileContents = fs.readFileSync(filePath, 'utf8');
-            const group = JSON.parse(fileContents);
-            const groupStat = fs.statSync(filePath);
-            group.date_added = groupStat.birthtimeMs;
-            group.create_date = new Date(groupStat.birthtimeMs).toISOString();
+        const groups = [];
+        for (const file of files) {
+            try {
+                const filePath = path.join(userDir, file);
+                const fileContents = fs.readFileSync(filePath, 'utf8');
+                const group = JSON.parse(fileContents);
+                const groupStat = fs.statSync(filePath);
+                group.date_added = groupStat.birthtimeMs;
+                group.create_date = new Date(groupStat.birthtimeMs).toISOString();
 
-            let chat_size = 0;
-            let date_last_chat = 0;
+                let chat_size = 0;
+                let date_last_chat = 0;
 
-            if (Array.isArray(group.chats) && Array.isArray(chats)) {
-                for (const chat of chats) {
-                    const chatName = path.basename(chat, '.jsonl');
-                    if (group.chats.includes(chatName)) {
-                        const chatId = `group/${chatName}`;
-                        const chatInfo = await getChatInfo(chatId, {}, false, null, handle);
-                        chat_size += parseInt(chatInfo.file_size) || 0;
-                        const lastMes = typeof chatInfo.last_mes === 'string' ? Date.parse(chatInfo.last_mes) : (chatInfo.last_mes || 0);
-                        date_last_chat = Math.max(date_last_chat, lastMes);
+                if (Array.isArray(group.chats) && Array.isArray(chats)) {
+                    for (const chat of chats) {
+                        const chatName = path.basename(chat, '.jsonl');
+                        if (group.chats.includes(chatName)) {
+                            const chatId = `group/${chatName}`;
+                            const chatInfo = await getChatInfo(chatId, {}, false, null, handle);
+                            chat_size += parseInt(chatInfo.file_size) || 0;
+                            const lastMes = typeof chatInfo.last_mes === 'string' ? Date.parse(chatInfo.last_mes) : (chatInfo.last_mes || 0);
+                            date_last_chat = Math.max(date_last_chat, lastMes);
+                        }
                     }
                 }
+
+                group.date_last_chat = date_last_chat;
+                group.chat_size = chat_size;
+                groups.push(group);
+            } catch (error) {
+                console.error(error);
             }
-
-            group.date_last_chat = date_last_chat;
-            group.chat_size = chat_size;
-            groups.push(group);
-        } catch (error) {
-            console.error(error);
         }
-    });
 
-    return response.send(groups);
+        return response.send(groups);
+    } catch (error) {
+        console.error('Group listing error:', error);
+        return response.status(500).json({ error: 'Failed to list groups' });
+    }
 });
 
 router.post('/create', (request, response) => {

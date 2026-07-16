@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { openDatabase } from './sqlite-backend.js';
-import { generateTimestamp } from '../util.js';
+import { generateTimestamp, getConfigValue } from '../util.js';
 
 /**
  * SQLite chat storage manager.
@@ -24,6 +24,10 @@ process.emitWarning = function (warning, ...args) {
 /** @type {Map<string, DatabaseSync>} */
 const dbCache = new Map();
 
+function getDataRoot() {
+    return globalThis.DATA_ROOT || getConfigValue('dataRoot', './data');
+}
+
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS chats (
     id TEXT PRIMARY KEY,
@@ -33,7 +37,8 @@ CREATE TABLE IF NOT EXISTS chats (
     group_id TEXT,
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL,
-    metadata TEXT
+    metadata TEXT,
+    revision INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS messages (
     chat_id TEXT NOT NULL,
@@ -71,13 +76,18 @@ export function getDatabase(userId) {
         return dbCache.get(userId);
     }
 
-    const userDir = path.join('data', userId);
+    const userDir = path.join(getDataRoot(), userId);
     if (!fs.existsSync(userDir)) {
         fs.mkdirSync(userDir, { recursive: true });
     }
 
     const dbPath = path.join(userDir, 'chats.db');
     const db = openDatabase(dbPath, SCHEMA);
+
+    const chatColumns = db.prepare('PRAGMA table_info(chats)').all();
+    if (!chatColumns.some(column => column.name === 'revision')) {
+        db.exec('ALTER TABLE chats ADD COLUMN revision INTEGER NOT NULL DEFAULT 0;');
+    }
 
     dbCache.set(userId, db);
     return db;
@@ -100,7 +110,7 @@ export function getDatabase(userId) {
 export async function backupDatabase(userId, opts = {}) {
     const maxBackups = Number(opts.maxBackups ?? 2);
     const db = getDatabase(userId);
-    const userDir = path.join('data', userId);
+    const userDir = path.join(getDataRoot(), userId);
     const dbPath = path.join(userDir, 'chats.db');
     const backupDir = path.join(userDir, 'backups');
     fs.mkdirSync(backupDir, { recursive: true });
@@ -149,8 +159,10 @@ async function rotateBackups(backupDir, maxBackups) {
     if (!Number.isFinite(maxBackups) || maxBackups < 1) {
         return;
     }
+    // Count only complete main database snapshots. Sidecars belong to their
+    // corresponding .db and must never consume independent retention slots.
     const files = fs.readdirSync(backupDir)
-        .filter(name => /^chatsdb_(?:\d{8}-\d{6}|[\dTZ_.-]+)\.db(?:-wal|-shm)?$/.test(name))
+        .filter(name => /^chatsdb_(?:\d{8}-\d{6}|[\dTZ_.-]+)\.db$/.test(name))
         .map(name => {
             const full = path.join(backupDir, name);
             let mtime = 0;
@@ -185,7 +197,7 @@ async function rotateBackups(backupDir, maxBackups) {
  * @param {number} [opts.maxBackups=5]
  */
 export async function backupAllUserDatabases(opts = {}) {
-    const dataRoot = 'data';
+    const dataRoot = getDataRoot();
     let userDirs = [];
     const failed = [];
     lastBackupFailed = false;
@@ -240,7 +252,7 @@ const DB_BACKUP_INTERVAL_MS = Number(process.env.AGENT_PLAYGROUND_DB_BACKUP_INTE
  * @returns {number|null}
  */
 function getLastBackupMtime() {
-    const dataRoot = 'data';
+    const dataRoot = getDataRoot();
     let newest = null;
     try {
         const userDirs = fs.readdirSync(dataRoot, { withFileTypes: true })
@@ -273,7 +285,7 @@ function getLastBackupMtime() {
  * @returns {number|null}
  */
 function getLastBackupMtimeForUser(userId) {
-    const backupDir = path.join('data', userId, 'backups');
+    const backupDir = path.join(getDataRoot(), userId, 'backups');
     let newest = null;
     try {
         if (!fs.existsSync(backupDir)) {

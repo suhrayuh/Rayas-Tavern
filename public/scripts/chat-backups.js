@@ -1,8 +1,8 @@
 import { t } from './i18n.js';
 import { callGenericPopup, Popup, POPUP_TYPE } from './popup.js';
-import { getFileExtension, sortMoments, timestampToMoment } from './utils.js';
-import { displayPastChats, getRequestHeaders, importCharacterChat } from '/script.js';
-import { importGroupChat } from './group-chats.js';
+import { timestampToMoment } from './utils.js';
+import { characters, getCurrentChatId, getRequestHeaders, reloadCurrentChat, this_chid } from '/script.js';
+import { selected_group } from './group-chats.js';
 
 class BackupsBrowser {
     /** @type {HTMLElement} */
@@ -15,6 +15,10 @@ class BackupsBrowser {
     #loadingAbortController;
     /** @type {boolean} */
     #isOpen = false;
+    /** @type {number} */
+    #currentPage = 0;
+    /** @type {boolean} */
+    #showAllChats = false;
 
     get isOpen() {
         return this.#isOpen;
@@ -22,14 +26,14 @@ class BackupsBrowser {
 
     /**
      * View a backup file content.
-     * @param {string} name File name of the backup to view.
+     * @param {number} backupId Backup database ID.
      * @returns {Promise<void>}
      */
-    async viewBackup(name) {
+    async viewBackup(backupId) {
         const response = await fetch('/api/backups/chat/download', {
             method: 'POST',
             headers: getRequestHeaders(),
-            body: JSON.stringify({ name: name }),
+            body: JSON.stringify({ backup_id: backupId }),
         });
 
         if (!response.ok) {
@@ -66,60 +70,43 @@ class BackupsBrowser {
     }
 
     /**
-     * Restore a backup by importing it.
-     * @param {string} name File name of the backup to restore.
+     * Restore a backup in place.
+     * @param {number} backupId Backup database ID.
+     * @param {string} chatId Chat ID restored by this backup.
      * @returns {Promise<void>}
      */
-    async restoreBackup(name) {
-        const response = await fetch('/api/backups/chat/download', {
+    async restoreBackup(backupId, chatId) {
+        const confirm = await Popup.show.confirm(t`Restore this chat backup?`, t`The current version will be preserved as a recovery snapshot first.`);
+        if (!confirm) {
+            return;
+        }
+
+        const response = await fetch('/api/backups/chat/restore', {
             method: 'POST',
             headers: getRequestHeaders(),
-            body: JSON.stringify({ name: name }),
+            body: JSON.stringify({ backup_id: backupId }),
         });
 
         if (!response.ok) {
-            toastr.error(t`Failed to download backup, try again later.`);
-            console.error('Failed to download chat backup:', response.statusText);
+            toastr.error(t`Failed to restore backup, try again later.`);
+            console.error('Failed to restore chat backup:', response.statusText);
             return;
         }
-
-        const blob = await response.blob();
-        const file = new File([blob], name, { type: 'application/octet-stream' });
-
-        const extension = getFileExtension(file);
-
-        if (extension !== 'jsonl') {
-            toastr.warning(t`Only .jsonl files are supported for chat imports.`);
-            return;
+        toastr.success(t`Chat backup restored.`);
+        const activeChatId = selected_group
+            ? `group/${getCurrentChatId()}`
+            : `char/${String(characters[this_chid]?.avatar ?? '').replace('.png', '')}/${getCurrentChatId()}`;
+        if (activeChatId === chatId) {
+            await reloadCurrentChat();
         }
-
-        const context = SillyTavern.getContext();
-
-        const formData = new FormData();
-        formData.set('file_type', extension);
-        formData.set('avatar', file);
-        formData.set('avatar_url', context.characters[context.characterId]?.avatar || '');
-        formData.set('user_name', context.name1);
-        formData.set('character_name', context.name2);
-
-        const importFn = context.groupId ? importGroupChat : importCharacterChat;
-        const result = await importFn(formData, { refresh: false });
-
-        if (result.length === 0) {
-            toastr.error(t`Failed to import chat backup, try again later.`);
-            return;
-        }
-
-        toastr.success(`Chat imported: ${result.join(', ')}`);
-        await displayPastChats(result);
     }
 
     /**
      * Delete a backup file.
-     * @param {string} name File name of the backup to delete.
+     * @param {number} backupId Backup database ID.
      * @returns {Promise<boolean>} True if deleted, false otherwise.
      */
-    async deleteBackup(name) {
+    async deleteBackup(backupId) {
         const confirm = await Popup.show.confirm(t`Are you sure?`);
         if (!confirm) {
             return false;
@@ -128,7 +115,7 @@ class BackupsBrowser {
         const response = await fetch('/api/backups/chat/delete', {
             method: 'POST',
             headers: getRequestHeaders(),
-            body: JSON.stringify({ name: name }),
+            body: JSON.stringify({ backup_id: backupId }),
         });
 
         if (!response.ok) {
@@ -141,7 +128,7 @@ class BackupsBrowser {
         return true;
     }
 
-    /**
+/**
      * Load backups and populate the list element.
      * @param {AbortSignal} signal Signal to abort loading.
      * @returns {Promise<void>}
@@ -153,21 +140,42 @@ class BackupsBrowser {
 
         this.#backupsListElement.innerHTML = '';
 
-        const response = await fetch('/api/backups/chat/get', {
-            method: 'POST',
-            headers: getRequestHeaders(),
-            signal,
-        });
+        const requestBody = {
+            page: this.#currentPage,
+            per_page: 5,
+        };
+        if (!this.#showAllChats) {
+            const currentChatId = this.#getCurrentChatId();
+            if (currentChatId) {
+                requestBody.chat_id = currentChatId;
+            }
+        }
+
+        let response;
+        try {
+            response = await fetch('/api/backups/chat/get', {
+                method: 'POST',
+                headers: getRequestHeaders(),
+                body: JSON.stringify(requestBody),
+                signal,
+            });
+        } catch (error) {
+            if (error?.name === 'AbortError') {
+                return;
+            }
+            console.error('Failed to load chat backups list:', error);
+            return;
+        }
 
         if (!response.ok) {
             console.error('Failed to load chat backups list:', response.statusText);
             return;
         }
 
-        /** @type {import('../../src/endpoints/chats.js').ChatInfo[]} */
-        const backupsList = await response.json();
+        const result = await response.json();
+        const backupsList = result?.items || [];
 
-        for (const backup of backupsList.sort((a, b) => sortMoments(timestampToMoment(a.last_mes), timestampToMoment(b.last_mes)))) {
+        for (const backup of backupsList) {
             const listItem = document.createElement('div');
             listItem.classList.add('chatBackupsListItem');
 
@@ -177,7 +185,7 @@ class BackupsBrowser {
 
             const backupInfo = document.createElement('div');
             backupInfo.classList.add('chatBackupsListItemInfo');
-            backupInfo.textContent = `${timestampToMoment(backup.last_mes).format('lll')} (${backup.file_size}, ${backup.chat_items} 💬)`;
+            backupInfo.textContent = `${timestampToMoment(backup.created_at).format('lll')} · ${backup.backup_type} (${backup.file_size}, ${backup.chat_items} 💬)`;
 
             const actionsList = document.createElement('div');
             actionsList.classList.add('chatBackupsListItemActions');
@@ -186,21 +194,21 @@ class BackupsBrowser {
             viewButton.classList.add('right_menu_button', 'fa-solid', 'fa-eye');
             viewButton.title = t`View backup`;
             viewButton.addEventListener('click', async () => {
-                await this.viewBackup(backup.file_name);
+                await this.viewBackup(backup.backup_id);
             });
 
             const restoreButton = document.createElement('div');
             restoreButton.classList.add('right_menu_button', 'fa-solid', 'fa-rotate-left');
             restoreButton.title = t`Restore backup`;
             restoreButton.addEventListener('click', async () => {
-                await this.restoreBackup(backup.file_name);
+                await this.restoreBackup(backup.backup_id, backup.chat_id);
             });
 
             const deleteButton = document.createElement('div');
             deleteButton.classList.add('right_menu_button', 'fa-solid', 'fa-trash');
             deleteButton.title = t`Delete backup`;
             deleteButton.addEventListener('click', async () => {
-                const isDeleted = await this.deleteBackup(backup.file_name);
+                const isDeleted = await this.deleteBackup(backup.backup_id);
                 if (isDeleted) {
                     listItem.remove();
                 }
@@ -216,6 +224,86 @@ class BackupsBrowser {
 
             this.#backupsListElement.appendChild(listItem);
         }
+
+        const pagination = document.createElement('div');
+        pagination.classList.add('chatBackupsListPagination');
+
+        const toggleButton = document.createElement('a');
+        toggleButton.classList.add('chatBackupsListToggle');
+        toggleButton.textContent = this.#showAllChats ? t`Show this chat only` : t`Show all chats`;
+        toggleButton.addEventListener('click', () => {
+            this.#showAllChats = !this.#showAllChats;
+            this.#currentPage = 0;
+            this.#refresh();
+        });
+        pagination.appendChild(toggleButton);
+
+        const totalPages = Math.ceil(result.total / result.per_page) || 1;
+        if (totalPages > 1) {
+            const info = document.createElement('span');
+            info.textContent = `${result.total} backups · page ${result.page + 1} / ${totalPages}`;
+            pagination.appendChild(info);
+
+            if (result.page > 0) {
+                const prevBtn = document.createElement('a');
+                prevBtn.classList.add('chatBackupsListPage');
+                prevBtn.textContent = '←';
+                prevBtn.addEventListener('click', () => {
+                    this.#currentPage--;
+                    this.#refresh();
+                });
+                pagination.appendChild(prevBtn);
+            }
+
+            if (result.page < totalPages - 1) {
+                const nextBtn = document.createElement('a');
+                nextBtn.classList.add('chatBackupsListPage');
+                nextBtn.textContent = '→';
+                nextBtn.addEventListener('click', () => {
+                    this.#currentPage++;
+                    this.#refresh();
+                });
+                pagination.appendChild(nextBtn);
+            }
+        } else {
+            const info = document.createElement('span');
+            info.textContent = `${result.total} backups`;
+            pagination.appendChild(info);
+        }
+
+        this.#backupsListElement.appendChild(pagination);
+    }
+
+    /**
+     * Get the full chat ID for the currently active chat.
+     * @returns {string|null}
+     */
+    #getCurrentChatId() {
+        if (selected_group) {
+            const id = getCurrentChatId();
+            return id ? `group/${id}` : null;
+        }
+        if (this_chid !== undefined && characters[this_chid]) {
+            const avatar = String(characters[this_chid].avatar ?? '').replace('.png', '');
+            const id = getCurrentChatId();
+            return id ? `char/${avatar}/${id}` : null;
+        }
+        return null;
+    }
+
+    /**
+     * Reload the current view, aborting any in-flight request.
+     */
+    #refresh() {
+        if (this.#loadingAbortController) {
+            this.#loadingAbortController.abort();
+            this.#loadingAbortController = null;
+        }
+        if (!this.#isOpen) {
+            return;
+        }
+        this.#loadingAbortController = new AbortController();
+        this.loadBackupsIntoList(this.#loadingAbortController.signal).catch(() => {});
     }
 
     closeBackups() {
@@ -244,6 +332,7 @@ class BackupsBrowser {
         }
 
         this.#isOpen = true;
+        this.#currentPage = 0;
         if (this.#buttonChevronIcon) {
             this.#buttonChevronIcon.classList.remove('fa-chevron-down');
             this.#buttonChevronIcon.classList.add('fa-chevron-up');
@@ -251,13 +340,9 @@ class BackupsBrowser {
         if (this.#backupsListElement) {
             this.#backupsListElement.classList.add('open');
         }
-        if (this.#loadingAbortController) {
-            this.#loadingAbortController.abort();
-            this.#loadingAbortController = null;
-        }
 
         this.#loadingAbortController = new AbortController();
-        this.loadBackupsIntoList(this.#loadingAbortController.signal);
+        this.loadBackupsIntoList(this.#loadingAbortController.signal).catch(() => {});
     }
 
     renderButton() {

@@ -453,6 +453,7 @@ let dialogueResolve = null;
 let dialogueCloseStop = false;
 /** @type {ChatMetadata} */
 export let chat_metadata = {};
+export let chat_revision = null;
 /** @type {StreamingProcessor} */
 export let streamingProcessor = null;
 let crop_data = undefined;
@@ -472,6 +473,14 @@ export const DEFAULT_PRINT_TIMEOUT = debounce_timeout.quick;
 
 export const saveSettingsDebounced = debounce((loopCounter = 0) => saveSettings(loopCounter), DEFAULT_SAVE_EDIT_TIMEOUT);
 export const saveCharacterDebounced = debounce(() => $('#create_button').trigger('click'), DEFAULT_SAVE_EDIT_TIMEOUT);
+
+function getChatRevisionFromResponse(response) {
+    const value = response.headers.get('X-Chat-Revision');
+    if (value === null || !Number.isInteger(Number(value))) {
+        throw new Error('Chat response did not include a valid revision');
+    }
+    return Number(value);
+}
 
 /**
  * Prints the character list in a debounced fashion without blocking, with a delay of 100 milliseconds.
@@ -902,7 +911,7 @@ export async function selectCharacterById(id, { switchMenu = true } = {}) {
             selected_button = 'character_edit';
             setCharacterId(id);
             chat_metadata = {};
-            await getChat();
+            await getChat({ allowCreate: true });
         }
     } else {
         //if clicked on character that was already selected
@@ -1423,13 +1432,13 @@ export async function replaceCurrentChat() {
             characters[this_chid].chat = chats[0].file_name.replace('.jsonl', '');
             $('#selected_chat_pole').val(characters[this_chid].chat);
             saveCharacterDebounced();
-            await getChat();
+            await getChat({ allowCreate: false });
         } else {
             // start new chat
             characters[this_chid].chat = `${name2} - ${humanizedDateTime()}`;
             $('#selected_chat_pole').val(characters[this_chid].chat);
             saveCharacterDebounced();
-            await getChat();
+            await getChat({ allowCreate: true });
         }
     }
 }
@@ -1605,7 +1614,10 @@ export async function clearChat({ clearData = false } = {}) {
     await saveItemizedPrompts(getCurrentChatId());
     itemizedPrompts.length = 0;
 
-    if (clearData) chat.length = 0;
+    if (clearData) {
+        chat.length = 0;
+        chat_revision = null;
+    }
 }
 
 export async function deleteLastMessage() {
@@ -7277,6 +7289,7 @@ export function resetChatState() {
     chat.splice(0, chat.length, ...SAFETY_CHAT);
     // resets chat metadata
     chat_metadata = {};
+    chat_revision = null;
     // resets the characters array, forcing getcharacters to reset
     characters.length = 0;
 }
@@ -7501,6 +7514,7 @@ async function renamePastChats(oldAvatar, newAvatar, newName) {
 
             if (getChatResponse.ok) {
                 const currentChat = await getChatResponse.json();
+                const expectedRevision = Number(getChatResponse.headers.get('X-Chat-Revision'));
 
                 for (const message of currentChat) {
                     if (message.is_user || message.is_system || message.extra?.type == system_message_types.NARRATOR) {
@@ -7522,6 +7536,7 @@ async function renamePastChats(oldAvatar, newAvatar, newName) {
                         file_name: fileNameWithoutExtension,
                         chat: currentChat,
                         avatar_url: newAvatar,
+                        expected_revision: expectedRevision,
                     }),
                     cache: 'no-cache',
                 });
@@ -7585,6 +7600,7 @@ export async function saveChat({ chatName, withMetadata, mesId, force = false, c
 
     const metadata = { ...chat_metadata, ...(withMetadata || {}) };
     const fileName = chatName ?? characters[this_chid]?.chat;
+    const expectedRevision = fileName === characters[this_chid]?.chat ? chat_revision : null;
 
     if (!fileName && name2 === neutralCharacterName) {
         // TODO: Do something for a temporary chat with no character.
@@ -7622,22 +7638,30 @@ export async function saveChat({ chatName, withMetadata, mesId, force = false, c
                 chat: [chatHeader, ...trimmedChat],
                 avatar_url: characters[this_chid].avatar,
                 force: force,
+                expected_revision: expectedRevision,
             }),
         });
         const result = await fetch('/api/chats/save', saveChatRequest);
 
         if (result.ok) {
+            const responseData = await result.json();
+            if (!Number.isInteger(Number(responseData.revision))) {
+                throw new Error('Chat save response did not include a valid revision');
+            }
+            if (fileName === characters[this_chid]?.chat) {
+                chat_revision = Number(responseData.revision);
+            }
             return;
         }
 
         const errorData = await result.json();
-        const isIntegrityError = errorData?.error === 'integrity' && !force;
-        if (!isIntegrityError) {
+        const isConflict = ['integrity_missing', 'integrity_mismatch', 'revision_mismatch'].includes(errorData?.error) && !force;
+        if (!isConflict) {
             throw new Error(result.statusText);
         }
 
         const popupResult = await Popup.show.input(
-            t`ERROR: Chat integrity check failed while saving the file.`,
+            t`ERROR: This chat changed since it was loaded.`,
             t`<p>After you click OK, the page will be reloaded to prevent data corruption.</p>
               <p>To confirm an overwrite (and potentially <b>LOSE YOUR DATA</b>), enter <code>OVERWRITE</code> (in all caps) in the box below before clicking OK.</p>`,
             '',
@@ -7652,7 +7676,7 @@ export async function saveChat({ chatName, withMetadata, mesId, force = false, c
             return;
         }
 
-        await saveChat({ chatName, withMetadata, mesId, force: true });
+        await saveChat({ chatName, withMetadata, mesId, force: true, chatData });
     } catch (error) {
         console.error(error);
         toastr.error(t`Check the server connection and reload the page to prevent data loss.`, t`Chat could not be saved`);
@@ -7811,41 +7835,62 @@ export async function unshallowCharacter(characterId) {
     await getOneCharacter(avatar);
 }
 
-export async function getChat() {
+export async function getChat({ allowCreate = false } = {}) {
+    const requestedCharacterId = this_chid;
+    const requestedChatName = characters[requestedCharacterId]?.chat;
+    const requestedAvatar = characters[requestedCharacterId]?.avatar;
+
     try {
-        await unshallowCharacter(this_chid);
+        await unshallowCharacter(requestedCharacterId);
 
         const response = await fetch('/api/chats/get', {
             method: 'POST',
             headers: getRequestHeaders(),
             cache: 'no-cache',
             body: JSON.stringify({
-                ch_name: characters[this_chid].name,
-                file_name: characters[this_chid].chat,
-                avatar_url: characters[this_chid].avatar,
+                ch_name: characters[requestedCharacterId].name,
+                file_name: requestedChatName,
+                avatar_url: requestedAvatar,
             }),
         });
 
+        if (response.status === 404 && allowCreate) {
+            if (requestedCharacterId !== this_chid || requestedChatName !== characters[this_chid]?.chat) {
+                return false;
+            }
+            chat.splice(0, chat.length);
+            chat_metadata = { integrity: uuidv4() };
+            chat_revision = null;
+            await getChatResult({ createIfEmpty: true });
+            return true;
+        }
+
         if (!response.ok) {
-            throw new Error('Chat could not be loaded');
+            throw new Error(`Chat could not be loaded (${response.status} ${response.statusText})`);
         }
 
         const data = await response.json();
-        if (Array.isArray(data) && data.length > 0) {
-            /** @type {ChatHeader} */
-            const chatHeader = data.shift();
-            chat_metadata = chatHeader?.chat_metadata ?? {};
-            chat.splice(0, chat.length, ...data);
-            chat.forEach(ensureMessageMediaIsArray);
-        } else {
-            // An empty/corrupted chat file
-            chat.splice(0, chat.length);
-            chat_metadata = {};
+        if (!Array.isArray(data) || data.length === 0) {
+            throw new Error('Chat response was empty or malformed');
         }
-        if (!chat_metadata.integrity) {
-            chat_metadata.integrity = uuidv4();
+
+        /** @type {ChatHeader} */
+        const chatHeader = data[0];
+        if (!chatHeader || typeof chatHeader.chat_metadata !== 'object') {
+            throw new Error('Chat response did not contain a valid header');
         }
-        await getChatResult();
+        if (requestedCharacterId !== this_chid || requestedChatName !== characters[this_chid]?.chat) {
+            return false;
+        }
+
+        const loadedMessages = data.slice(1);
+        const loadedMetadata = { ...chatHeader.chat_metadata };
+        loadedMetadata.integrity ??= uuidv4();
+        chat.splice(0, chat.length, ...loadedMessages);
+        chat_metadata = loadedMetadata;
+        chat_revision = getChatRevisionFromResponse(response);
+        chat.forEach(ensureMessageMediaIsArray);
+        await getChatResult({ createIfEmpty: false });
         eventSource.emit(event_types.CHAT_LOADED, { detail: { id: this_chid, character: characters[this_chid] } });
 
         // Focus on the textarea if not already focused on a visible text input
@@ -7855,16 +7900,18 @@ export async function getChat() {
             }
             $('#send_textarea').trigger('click').trigger('focus');
         });
+        return true;
     } catch (error) {
-        await getChatResult();
-        console.log(error);
+        console.error(error);
+        toastr.error(t`The chat could not be loaded. No data was saved.`, t`Chat load failed`);
+        return false;
     }
 }
 
-async function getChatResult() {
+async function getChatResult({ createIfEmpty = false } = {}) {
     name2 = characters[this_chid].name;
     let freshChat = false;
-    if (chat.length === 0) {
+    if (createIfEmpty && chat.length === 0) {
         const message = getFirstMessage();
         if (message.mes) {
             chat.push(message);
@@ -7924,9 +7971,14 @@ function getFirstMessage() {
 export async function openCharacterChat(file_name) {
     await waitUntilCondition(() => !isChatSaving, debounce_timeout.extended, 10);
     await clearChat({ clearData: true });
+    const previousChatName = characters[this_chid].chat;
     characters[this_chid].chat = file_name;
     chat_metadata = {};
-    await getChat();
+    const loaded = await getChat({ allowCreate: false });
+    if (!loaded) {
+        characters[this_chid].chat = previousChatName;
+        return;
+    }
     $('#selected_chat_pole').val(file_name);
     await createOrEditCharacter(new CustomEvent('newChat'));
 }
@@ -10897,7 +10949,10 @@ export async function doNewChat({ deleteCurrentChat = false } = {}) {
         chat_metadata = {};
         characters[this_chid].chat = `${name2} - ${humanizedDateTime()}`;
         $('#selected_chat_pole').val(characters[this_chid].chat);
-        await getChat();
+        const created = await getChat({ allowCreate: true });
+        if (!created) {
+            return;
+        }
         await createOrEditCharacter(new CustomEvent('newChat'));
         if (deleteCurrentChat) await delChat(chat_file_for_del + '.jsonl');
     }

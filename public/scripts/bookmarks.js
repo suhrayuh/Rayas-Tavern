@@ -282,9 +282,9 @@ export async function createNewBookmark(mesId, { forceName = null } = {}) {
     await saveItemizedPrompts(name);
 
     if (selected_group) {
-        await saveGroupBookmarkChat(selected_group, name, newMetadata, mesId);
+        await saveGroupBookmarkChat(selected_group, name, newMetadata, mesId, undefined, Boolean(isReplace));
     } else {
-        await saveChat({ chatName: name, withMetadata: newMetadata, mesId });
+        await saveChat({ chatName: name, withMetadata: newMetadata, mesId, force: Boolean(isReplace) });
     }
 
     lastMes.extra.bookmark_link = name;

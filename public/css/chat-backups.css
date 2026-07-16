@@ -52,3 +52,25 @@
 .chatBackupsListItemActions .right_menu_button {
     font-size: var(--mainFontSize);
 }
+
+.chatBackupsListPagination {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 5px;
+    font-size: smaller;
+    opacity: 0.75;
+    border-top: 1px dashed var(--SmartThemeBorderColor);
+    margin-top: 3px;
+}
+
+.chatBackupsListPagination a {
+    cursor: pointer;
+    text-decoration: underline;
+}
+
+.chatBackupsListPagination a.chatBackupsListToggle {
+    color: var(--SmartThemeQuoteColor);
+    margin-right: auto;
+}

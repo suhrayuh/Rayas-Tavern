@@ -110,6 +110,7 @@ export {
 let is_group_generating = false; // Group generation flag
 let is_group_automode_enabled = false;
 let hideMutedSprites = false;
+let groupChatRevision = null;
 /** @type {Group[]} */
 let groups = [];
 /** @type {string|null} */
@@ -190,24 +191,31 @@ async function regenerateGroup() {
 /**
  * Loads group chat messages from the server.
  * @param {string} chatId Chat ID
- * @returns {Promise<ChatFile>} Array of chat messages
+ * @param {boolean} allowCreate Whether a missing chat may be created
+ * @returns {Promise<{data: ChatFile, revision: number|null}>} Chat messages and revision
  */
-async function loadGroupChat(chatId) {
+async function loadGroupChat(chatId, allowCreate = false) {
     const response = await fetch('/api/chats/group/get', {
         method: 'POST',
         headers: getRequestHeaders(),
         body: JSON.stringify({ id: chatId }),
     });
 
-    if (response.ok) {
-        const data = await response.json();
-        if (!Array.isArray(data)) {
-            return [];
-        }
-        return data;
+    if (response.status === 404 && allowCreate) {
+        return { data: [], revision: null };
     }
-
-    return [];
+    if (!response.ok) {
+        throw new Error(`Group chat could not be loaded (${response.status} ${response.statusText})`);
+    }
+    const data = await response.json();
+    if (!Array.isArray(data) || data.length === 0) {
+        throw new Error('Group chat response was empty or malformed');
+    }
+    const revision = response.headers.get('X-Chat-Revision');
+    if (revision === null || !Number.isInteger(Number(revision))) {
+        throw new Error('Group chat response did not include a valid revision');
+    }
+    return { data, revision: Number(revision) };
 }
 
 /**
@@ -250,13 +258,14 @@ async function validateGroup(group) {
  * Loads the chat messages for a specific group.
  * @param {string} groupId - The ID of the group to load chat messages for.
  * @param {boolean} reload - Whether to reload the group chat after loading.
- * @returns {Promise<void>} A promise that resolves when the chat messages have been loaded.
+ * @param {boolean} allowCreate Whether a missing chat may be created
+ * @returns {Promise<boolean>} Whether the chat was loaded or created
  */
-export async function getGroupChat(groupId, reload = false) {
+export async function getGroupChat(groupId, reload = false, allowCreate = false) {
     const group = groups.find((x) => x.id === groupId);
     if (!group) {
         console.warn('Group not found', groupId);
-        return;
+        return false;
     }
 
     // Run validation before any loading
@@ -264,7 +273,17 @@ export async function getGroupChat(groupId, reload = false) {
     await unshallowGroupMembers(groupId);
 
     const chat_id = group.chat_id;
-    const data = await loadGroupChat(chat_id);
+    groupChatRevision = null;
+    let loaded;
+    try {
+        loaded = await loadGroupChat(chat_id, allowCreate);
+    } catch (error) {
+        console.error(error);
+        toastr.error(t`The group chat could not be loaded. No data was saved.`, t`Chat load failed`);
+        return false;
+    }
+    const data = loaded.data;
+    groupChatRevision = loaded.revision;
     const metadata = data?.[0]?.chat_metadata ?? {};
     const freshChat = !metadata.tainted && (!Array.isArray(data) || !data.length);
 
@@ -317,6 +336,7 @@ export async function getGroupChat(groupId, reload = false) {
 
     await eventSource.emit(event_types.CHAT_CHANGED, getCurrentChatId());
     if (freshChat) await eventSource.emit(event_types.GROUP_CHAT_CREATED);
+    return true;
 }
 
 /**
@@ -637,14 +657,14 @@ async function saveGroupChat(groupId, shouldSaveGroup, force = false) {
     const saveGroupChatRequest = await compressRequest({
         method: 'POST',
         headers: getRequestHeaders(),
-        body: JSON.stringify({ id: chatId, chat: [chatHeader, ...chat], force: force }),
+        body: JSON.stringify({ id: chatId, chat: [chatHeader, ...chat], force: force, expected_revision: groupChatRevision }),
     });
     const response = await fetch('/api/chats/group/save', saveGroupChatRequest);
 
     if (!response.ok) {
         const errorData = await response.json();
-        const isIntegrityError = errorData?.error === 'integrity' && !force;
-        if (!isIntegrityError) {
+        const isConflict = ['integrity_missing', 'integrity_mismatch', 'revision_mismatch'].includes(errorData?.error) && !force;
+        if (!isConflict) {
             toastr.error(t`Check the server connection and reload the page to prevent data loss.`, t`Group Chat could not be saved`);
             console.error('Group chat could not be saved', response);
             return;
@@ -667,7 +687,14 @@ async function saveGroupChat(groupId, shouldSaveGroup, force = false) {
         }
 
         await saveGroupChat(groupId, shouldSaveGroup, true);
+        return;
     }
+
+    const responseData = await response.json();
+    if (!Number.isInteger(Number(responseData.revision))) {
+        throw new Error('Group chat save response did not include a valid revision');
+    }
+    groupChatRevision = Number(responseData.revision);
 
     if (shouldSaveGroup) {
         await editGroup(groupId, false, false);
@@ -699,7 +726,8 @@ export async function renameGroupMember(oldAvatar, newAvatar, newName) {
 
             // Load all chats from this group
             for (const chatId of group.chats) {
-                const messages = await loadGroupChat(chatId);
+                const loadedChat = await loadGroupChat(chatId);
+                const messages = loadedChat.data;
 
                 // Only save the chat if there were any changes to the chat content
                 let hadChanges = false;
@@ -733,7 +761,7 @@ export async function renameGroupMember(oldAvatar, newAvatar, newName) {
                         const saveChatRequest = await compressRequest({
                             method: 'POST',
                             headers: getRequestHeaders(),
-                            body: JSON.stringify({ id: chatId, chat: [...messages] }),
+                            body: JSON.stringify({ id: chatId, chat: [...messages], expected_revision: loadedChat.revision }),
                         });
                         const saveChatResponse = await fetch('/api/chats/group/save', saveChatRequest);
 
@@ -2150,7 +2178,7 @@ export async function createNewGroupChat(groupId) {
     updateChatMetadata({}, true);
 
     await editGroup(group.id, true, false);
-    await getGroupChat(group.id);
+    await getGroupChat(group.id, false, true);
 }
 
 /**
@@ -2205,7 +2233,7 @@ export async function openGroupChat(groupId, chatId) {
     updateChatMetadata({}, true);
 
     await editGroup(groupId, true, false);
-    await getGroupChat(groupId);
+    await getGroupChat(groupId, false, false);
 }
 
 /**
@@ -2353,9 +2381,10 @@ export async function importGroupChat(formData, { refresh = true } = {}) {
  * @param {ChatMetadata?} metadata New metadata to save with the chat
  * @param {number|undefined} mesId Optional message ID to trim the chat up to
  * @param {ChatMessage[]|undefined} chatData Optional chat snapshot to save instead of the current in-memory chat
+ * @param {boolean} force Whether to replace an existing checkpoint chat
  * @returns {Promise<void>} Promise that resolves when the group chat is saved
  */
-export async function saveGroupBookmarkChat(groupId, name, metadata, mesId, chatData = undefined) {
+export async function saveGroupBookmarkChat(groupId, name, metadata, mesId, chatData = undefined, force = false) {
     const group = groups.find(x => x.id === groupId);
 
     if (!group) {
@@ -2383,7 +2412,7 @@ export async function saveGroupBookmarkChat(groupId, name, metadata, mesId, chat
     const saveChatRequest = await compressRequest({
         method: 'POST',
         headers: getRequestHeaders(),
-        body: JSON.stringify({ id: name, chat: [chatHeader, ...trimmedChat] }),
+        body: JSON.stringify({ id: name, chat: [chatHeader, ...trimmedChat], force }),
     });
     const response = await fetch('/api/chats/group/save', saveChatRequest);
 

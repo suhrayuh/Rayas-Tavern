@@ -18,7 +18,6 @@ import {
     tryWriteFileSync,
     tryReadFileSync,
     tryDeleteFile,
-    readFirstLine,
     isPathUnderParent,
 } from '../util.js';
 import { getDatabase } from './sqlite-manager.js';
@@ -58,6 +57,7 @@ function backupChat(userId, chatId, chatData, backupPrefix = CHAT_BACKUPS_PREFIX
 
 /**
  * Trims old backups for a chat to respect maxTotalChatBackups.
+ * Opens its own read connection if `db` not provided.
  * @param {string} userId
  * @param {string} chatId
  */
@@ -66,6 +66,18 @@ function trimBackups(userId, chatId) {
         return;
     }
     const db = getDatabase(userId);
+    trimBackupsInDb(db, chatId);
+}
+
+/**
+ * Trims old backups using an existing db connection (for use inside transactions).
+ * @param {import('node:sqlite').DatabaseSync} db
+ * @param {string} chatId
+ */
+function trimBackupsInDb(db, chatId) {
+    if (isNaN(maxTotalChatBackups) || maxTotalChatBackups < 0) {
+        return;
+    }
     const count = db.prepare('SELECT COUNT(*) AS c FROM backups WHERE chat_id = ?').get(chatId)?.c || 0;
     if (count > maxTotalChatBackups) {
         const toDelete = db.prepare('SELECT id FROM backups WHERE chat_id = ? ORDER BY created_at ASC LIMIT ?').all(chatId, count - maxTotalChatBackups);
@@ -73,6 +85,29 @@ function trimBackups(userId, chatId) {
             db.prepare('DELETE FROM backups WHERE id = ?').run(row.id);
         }
     }
+}
+
+/**
+ * Prunes all existing backups across all chats to keep only the newest `maxTotalBackups` per chat.
+ * Returns a summary of how many rows were deleted.
+ * @param {string} userId
+ * @returns {{ scannedChats: number, deletedRows: number }}
+ */
+export function pruneAllChatBackups(userId) {
+    const db = getDatabase(userId);
+    const chatIds = db.prepare('SELECT DISTINCT chat_id FROM backups').all().map(r => r.chat_id);
+    let deletedRows = 0;
+    for (const chatId of chatIds) {
+        const count = db.prepare('SELECT COUNT(*) AS c FROM backups WHERE chat_id = ?').get(chatId)?.c || 0;
+        if (count > maxTotalChatBackups) {
+            const toDelete = db.prepare('SELECT id FROM backups WHERE chat_id = ? ORDER BY created_at ASC LIMIT ?').all(chatId, count - maxTotalChatBackups);
+            for (const row of toDelete) {
+                db.prepare('DELETE FROM backups WHERE id = ?').run(row.id);
+                deletedRows++;
+            }
+        }
+    }
+    return { scannedChats: chatIds.length, deletedRows };
 }
 
 /**
@@ -86,10 +121,17 @@ const backupFunctions = new Map();
  * @returns {typeof backupChat}
  */
 function getBackupFunction(userId) {
-    if (!backupFunctions.has(userId)) {
-        backupFunctions.set(userId, _.throttle(backupChat, throttleInterval, { leading: true, trailing: true }));
+    const key = `${userId}`;
+    if (!backupFunctions.has(key)) {
+        backupFunctions.set(key, new Map());
     }
-    return backupFunctions.get(userId) || (() => { });
+    return (handle, chatId, chatData) => {
+        const userBackups = backupFunctions.get(key);
+        if (!userBackups.has(chatId)) {
+            userBackups.set(chatId, _.throttle(backupChat, throttleInterval, { leading: true, trailing: true }));
+        }
+        userBackups.get(chatId)(handle, chatId, chatData);
+    };
 }
 
 /**
@@ -110,8 +152,16 @@ function getPreviewMessage(lastMessage) {
 }
 
 process.on('exit', () => {
-    for (const func of backupFunctions.values()) {
-        func.flush();
+    for (const userBackups of backupFunctions.values()) {
+        if (userBackups instanceof Map) {
+            for (const throttled of userBackups.values()) {
+                if (typeof throttled?.flush === 'function') {
+                    throttled.flush();
+                }
+            }
+        } else if (typeof userBackups?.flush === 'function') {
+            userBackups.flush();
+        }
     }
 });
 
@@ -323,30 +373,6 @@ function importRisuChat(userName, characterName, jsonData) {
 }
 
 /**
- * Checks if the chat being saved has the same integrity as the one being loaded.
- * @param {string} chatId Chat id
- * @param {string} integritySlug Integrity slug
- * @param {string} userId User handle
- * @returns {Promise<boolean>} Whether the chat is intact
- */
-async function checkChatIntegrity(chatId, integritySlug, userId) {
-    const db = getDatabase(userId);
-    const row = db.prepare('SELECT data FROM messages WHERE chat_id = ? AND ordinal = 0').get(chatId);
-    if (!row) {
-        return true;
-    }
-    const jsonData = tryParse(row.data);
-    const chatIntegrity = jsonData?.chat_metadata?.integrity;
-
-    if (!chatIntegrity) {
-        console.debug(`Chat "${chatId}" does not have integrity metadata matching "${integritySlug}". The integrity validation has been skipped.`);
-        return true;
-    }
-
-    return chatIntegrity === integritySlug;
-}
-
-/**
  * @typedef {Object} ChatInfo
  * @property {string} [file_id] - The chat id (last path segment)
  * @property {string} [file_name] - The chat id with .jsonl suffix (for client compat)
@@ -438,6 +464,99 @@ class IntegrityMismatchError extends Error {
     }
 }
 
+class IntegrityMissingError extends IntegrityMismatchError {}
+class RevisionMismatchError extends Error {}
+
+function getStoredChat(db, chatId) {
+    const chatRow = db.prepare('SELECT revision FROM chats WHERE id = ?').get(chatId);
+    if (!chatRow) {
+        return null;
+    }
+    const rows = db.prepare('SELECT data FROM messages WHERE chat_id = ? ORDER BY ordinal').all(chatId);
+    return {
+        revision: Number(chatRow.revision ?? 0),
+        data: rows.map(row => tryParse(row.data)).filter(Boolean),
+    };
+}
+
+function isAppendOnlySave(previousData, nextData) {
+    const previousMessages = previousData.slice(1);
+    const nextMessages = nextData.slice(1);
+    if (nextMessages.length < previousMessages.length) {
+        return false;
+    }
+    return previousMessages.every((message, index) => JSON.stringify(message) === JSON.stringify(nextMessages[index]));
+}
+
+function insertBackup(db, chatId, chatData, backupType) {
+    const serialized = JSON.stringify(chatData);
+    const latest = db.prepare('SELECT data FROM backups WHERE chat_id = ? AND backup_type = ? ORDER BY created_at DESC, id DESC LIMIT 1').get(chatId, backupType);
+    if (latest?.data === serialized) {
+        return;
+    }
+    const version = (db.prepare('SELECT COALESCE(MAX(version), 0) + 1 AS v FROM backups WHERE chat_id = ?').get(chatId)?.v) || 1;
+    db.prepare('INSERT INTO backups (chat_id, version, created_at, data, backup_type) VALUES (?, ?, ?, ?, ?)').run(
+        chatId,
+        version,
+        Date.now(),
+        serialized,
+        backupType,
+    );
+}
+
+export function restoreChatBackup(userId, backupId) {
+    const db = getDatabase(userId);
+    const backup = db.prepare('SELECT chat_id, data FROM backups WHERE id = ?').get(backupId);
+    if (!backup) {
+        return null;
+    }
+    const restoredData = tryParse(backup.data);
+    if (!Array.isArray(restoredData) || restoredData.length === 0) {
+        throw new Error(`Backup ${backupId} does not contain a valid chat.`);
+    }
+
+    const chatId = backup.chat_id;
+    const now = Date.now();
+    const isGroup = chatId.startsWith('group/');
+    const characterKey = isGroup ? null : chatId.split('/')[1];
+    const groupId = isGroup ? chatId.split('/')[1] : null;
+    const metadata = JSON.stringify(restoredData[0]?.chat_metadata ?? {});
+    let revision = 0;
+    let transactionStarted = false;
+
+    try {
+        db.exec('BEGIN IMMEDIATE');
+        transactionStarted = true;
+const storedChat = getStoredChat(db, chatId);
+        if (storedChat?.data?.length) {
+            insertBackup(db, chatId, storedChat.data, 'pre_restore');
+            trimBackupsInDb(db, chatId);
+        }
+        revision = storedChat ? storedChat.revision + 1 : 0;
+
+        db.prepare(`INSERT INTO chats (id, user_id, character_key, chat_type, group_id, created_at, updated_at, metadata, revision)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET updated_at = ?, metadata = ?, character_key = ?, group_id = ?, revision = ?`).run(
+            chatId, userId, characterKey, isGroup ? 'group' : 'character', groupId, now, now, metadata, revision,
+            now, metadata, characterKey, groupId, revision,
+        );
+        db.prepare('DELETE FROM messages WHERE chat_id = ?').run(chatId);
+        const insertMessage = db.prepare('INSERT INTO messages (chat_id, ordinal, data, is_user, send_date) VALUES (?, ?, ?, ?, ?)');
+        restoredData.forEach((message, ordinal) => {
+            insertMessage.run(chatId, ordinal, JSON.stringify(message), message.is_user ? 1 : 0, message.send_date || new Date().toISOString());
+        });
+        db.exec('COMMIT');
+        transactionStarted = false;
+    } catch (error) {
+        if (transactionStarted) {
+            db.exec('ROLLBACK');
+        }
+        throw error;
+    }
+
+    return { chatId, revision };
+}
+
 /**
  * Saves a chat to the database.
  * @param {Array} chatData The chat array to save.
@@ -447,12 +566,11 @@ class IntegrityMismatchError extends Error {
  * @param {string} cardName Passed to backupChat.
  * @param {string} backupDirectory Passed to backupChat (unused for DB backups, kept for compat).
  */
-export async function trySaveChat(chatData, chatId, skipIntegrityCheck = false, handle, cardName, backupDirectory, skipBackup = false) {
+export async function trySaveChat(chatData, chatId, skipIntegrityCheck = false, handle, cardName, backupDirectory, skipBackup = false, expectedRevision = null) {
     const doIntegrityCheck = (checkIntegrity && !skipIntegrityCheck);
     const chatIntegritySlug = doIntegrityCheck ? chatData?.[0]?.chat_metadata?.integrity : undefined;
-
-    if (chatIntegritySlug && !await checkChatIntegrity(chatId, chatIntegritySlug, handle)) {
-        throw new IntegrityMismatchError(`Chat integrity check failed for "${chatId}". The expected integrity slug was "${chatIntegritySlug}".`);
+    if (doIntegrityCheck && !chatIntegritySlug) {
+        throw new IntegrityMissingError(`Chat "${chatId}" is missing required integrity metadata.`);
     }
 
     const db = getDatabase(handle);
@@ -461,14 +579,42 @@ export async function trySaveChat(chatData, chatId, skipIntegrityCheck = false, 
     const characterKey = isGroup ? null : chatId.split('/')[1];
     const groupId = isGroup ? chatId.split('/')[1] : null;
     const metadata = JSON.stringify(chatData?.[0]?.chat_metadata ?? {});
+    let nextRevision = 0;
+    let transactionStarted = false;
 
     try {
-        db.exec('BEGIN');
-        db.prepare(`INSERT INTO chats (id, user_id, character_key, chat_type, group_id, created_at, updated_at, metadata)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(id) DO UPDATE SET updated_at = ?, metadata = ?, character_key = ?, group_id = ?`).run(
-            chatId, handle, characterKey, isGroup ? 'group' : 'character', groupId, now, now, metadata,
-            now, metadata, characterKey, groupId,
+        db.exec('BEGIN IMMEDIATE');
+        transactionStarted = true;
+
+        const storedChat = getStoredChat(db, chatId);
+        if (storedChat && doIntegrityCheck) {
+            const storedIntegrity = storedChat.data?.[0]?.chat_metadata?.integrity;
+            if (storedIntegrity && !chatIntegritySlug) {
+                throw new IntegrityMissingError(`Chat "${chatId}" is missing required integrity metadata.`);
+            }
+            if (storedIntegrity && storedIntegrity !== chatIntegritySlug) {
+                throw new IntegrityMismatchError(`Chat integrity check failed for "${chatId}". The expected integrity slug was "${chatIntegritySlug}".`);
+            }
+            if (expectedRevision === null || Number(expectedRevision) !== storedChat.revision) {
+                throw new RevisionMismatchError(`Chat revision check failed for "${chatId}". Expected ${expectedRevision}, stored ${storedChat.revision}.`);
+            }
+        }
+
+        nextRevision = storedChat ? storedChat.revision + 1 : 0;
+
+    const shouldPreservePreImage = storedChat
+            && (!skipBackup || doIntegrityCheck)
+            && (skipIntegrityCheck || !isAppendOnlySave(storedChat.data, chatData));
+        if (shouldPreservePreImage) {
+            insertBackup(db, chatId, storedChat.data, 'pre_save');
+            trimBackupsInDb(db, chatId);
+        }
+
+        db.prepare(`INSERT INTO chats (id, user_id, character_key, chat_type, group_id, created_at, updated_at, metadata, revision)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET updated_at = ?, metadata = ?, character_key = ?, group_id = ?, revision = ?`).run(
+            chatId, handle, characterKey, isGroup ? 'group' : 'character', groupId, now, now, metadata, nextRevision,
+            now, metadata, characterKey, groupId, nextRevision,
         );
 
         db.prepare('DELETE FROM messages WHERE chat_id = ?').run(chatId);
@@ -478,14 +624,18 @@ export async function trySaveChat(chatData, chatId, skipIntegrityCheck = false, 
             insertMsg.run(chatId, ordinal, JSON.stringify(msg), msg.is_user ? 1 : 0, msg.send_date || new Date().toISOString());
         });
         db.exec('COMMIT');
+        transactionStarted = false;
     } catch (err) {
-        db.exec('ROLLBACK');
+        if (transactionStarted) {
+            db.exec('ROLLBACK');
+        }
         throw err;
     }
 
     if (!skipBackup) {
         getBackupFunction(handle)(handle, chatId, chatData);
     }
+    return nextRevision;
 }
 
 router.post('/save', validateAvatarUrlMiddleware, async function (request, response) {
@@ -496,15 +646,19 @@ router.post('/save', validateAvatarUrlMiddleware, async function (request, respo
         const chatId = `char/${cardName}/${sanitize(request.body.file_name)}`;
 
         if (Array.isArray(chatData)) {
-            await trySaveChat(chatData, chatId, request.body.force, handle, cardName, request.user.directories.backups);
-            return response.send({ ok: true });
+            const revision = await trySaveChat(chatData, chatId, request.body.force, handle, cardName, request.user.directories.backups, false, request.body.expected_revision ?? null);
+            return response.send({ ok: true, revision });
         } else {
             return response.status(400).send({ error: 'The request\'s body.chat is not an array.' });
         }
     } catch (error) {
         if (error instanceof IntegrityMismatchError) {
             console.error(error.message);
-            return response.status(400).send({ error: 'integrity' });
+            return response.status(409).send({ error: error instanceof IntegrityMissingError ? 'integrity_missing' : 'integrity_mismatch' });
+        }
+        if (error instanceof RevisionMismatchError) {
+            console.error(error.message);
+            return response.status(409).send({ error: 'revision_mismatch' });
         }
         console.error(error);
         return response.status(500).send({ error: 'An error has occurred, see the console logs for more information.' });
@@ -536,10 +690,20 @@ router.post('/get', validateAvatarUrlMiddleware, function (request, response) {
         }
 
         const chatId = `char/${dirName}/${sanitize(request.body.file_name)}`;
-        return response.send(getChatData(chatId, handle));
+        const db = getDatabase(handle);
+        const chatRow = db.prepare('SELECT revision FROM chats WHERE id = ?').get(chatId);
+        if (!chatRow) {
+            return response.sendStatus(404);
+        }
+        const chatData = getChatData(chatId, handle);
+        if (!Array.isArray(chatData) || chatData.length === 0) {
+            throw new Error(`Chat "${chatId}" has no readable messages.`);
+        }
+        response.setHeader('X-Chat-Revision', String(chatRow.revision ?? 0));
+        return response.send(chatData);
     } catch (error) {
         console.error(error);
-        return response.send({});
+        return response.status(500).send({ error: 'chat_load_failed' });
     }
 });
 
@@ -778,13 +942,28 @@ router.post('/import', validateAvatarUrlMiddleware, function (request, response)
 });
 
 router.post('/group/get', (request, response) => {
-    if (!request.body || !request.body.id) {
-        return response.sendStatus(400);
-    }
+    try {
+        if (!request.body || !request.body.id) {
+            return response.sendStatus(400);
+        }
 
-    const handle = request.user.profile.handle;
-    const chatId = `group/${request.body.id}`;
-    return response.send(getChatData(chatId, handle));
+        const handle = request.user.profile.handle;
+        const chatId = `group/${request.body.id}`;
+        const db = getDatabase(handle);
+        const chatRow = db.prepare('SELECT revision FROM chats WHERE id = ?').get(chatId);
+        if (!chatRow) {
+            return response.sendStatus(404);
+        }
+        const chatData = getChatData(chatId, handle);
+        if (!Array.isArray(chatData) || chatData.length === 0) {
+            throw new Error(`Group chat "${chatId}" has no readable messages.`);
+        }
+        response.setHeader('X-Chat-Revision', String(chatRow.revision ?? 0));
+        return response.send(chatData);
+    } catch (error) {
+        console.error(error);
+        return response.status(500).send({ error: 'chat_load_failed' });
+    }
 });
 
 router.post('/group/info', async (request, response) => {
@@ -837,15 +1016,19 @@ router.post('/group/save', async function (request, response) {
         const chatData = request.body.chat;
 
         if (Array.isArray(chatData)) {
-            await trySaveChat(chatData, chatId, request.body.force, handle, String(request.body.id), request.user.directories.backups);
-            return response.send({ ok: true });
+            const revision = await trySaveChat(chatData, chatId, request.body.force, handle, String(request.body.id), request.user.directories.backups, false, request.body.expected_revision ?? null);
+            return response.send({ ok: true, revision });
         } else {
             return response.status(400).send({ error: 'The request\'s body.chat is not an array.' });
         }
     } catch (error) {
         if (error instanceof IntegrityMismatchError) {
             console.error(error.message);
-            return response.status(400).send({ error: 'integrity' });
+            return response.status(409).send({ error: error instanceof IntegrityMissingError ? 'integrity_missing' : 'integrity_mismatch' });
+        }
+        if (error instanceof RevisionMismatchError) {
+            console.error(error.message);
+            return response.status(409).send({ error: 'revision_mismatch' });
         }
         console.error(error);
         return response.status(500).send({ error: 'An error has occurred, see the console logs for more information.' });
@@ -862,8 +1045,38 @@ router.post('/search', validateAvatarUrlMiddleware, async function (request, res
         let chatIds = [];
 
         if (group_id) {
-            const rows = db.prepare('SELECT id FROM chats WHERE user_id = ? AND chat_type = \'group\' AND group_id = ?').all(handle, group_id);
-            chatIds = rows.map(r => r.id);
+            // The SQLite `group_id` column stores the chatId segment (e.g. the
+            // humanized date used as the chat filename), NOT the group JSON's
+            // `id`. To avoid that mismatch we resolve the list of valid chat IDs
+            // from the group's `chats` array (authoritative source) and then
+            // filter by exact match against the `chats.id` column.
+            const groupJsonPath = path.join(request.user.directories.groups, sanitize(`${group_id}.json`));
+            let groupChatNames = [];
+            try {
+                if (fs.existsSync(groupJsonPath)) {
+                    const groupData = JSON.parse(fs.readFileSync(groupJsonPath, 'utf8'));
+                    if (Array.isArray(groupData.chats)) {
+                        groupChatNames = groupData.chats.filter(x => typeof x === 'string');
+                    }
+                }
+            } catch (error) {
+                console.warn('Failed to read group JSON for chat search, falling back to LIKE', error.message);
+            }
+
+            if (groupChatNames.length > 0) {
+                const placeholders = groupChatNames.map(() => '?').join(',');
+                const rows = db.prepare(
+                    `SELECT id FROM chats WHERE user_id = ? AND chat_type = 'group' AND id IN (${groupChatNames.map(n => `group/${n}`).map(() => '?').join(',')})`,
+                ).all(handle, ...groupChatNames.map(n => `group/${n}`));
+                chatIds = rows.map(r => r.id);
+            }
+
+            // Fallback: if the group JSON is missing or unreadable, fall back to
+            // a LIKE on the chat_id prefix so old/migrated data still appears.
+            if (chatIds.length === 0) {
+                const rows = db.prepare('SELECT id FROM chats WHERE user_id = ? AND chat_type = \'group\' AND group_id = ?').all(handle, group_id);
+                chatIds = rows.map(r => r.id);
+            }
         } else {
             const character_name = avatar_url.replace('.png', '');
             const rows = db.prepare('SELECT id FROM chats WHERE user_id = ? AND chat_type = \'character\' AND character_key = ?').all(handle, character_name);

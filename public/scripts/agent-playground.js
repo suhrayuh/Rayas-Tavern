@@ -161,13 +161,13 @@ async function applySelectedConfigToForm() {
     $('agentplayground_provider_url').value = config?.providerUrl || '';
     $('agentplayground_provider_key').value = ''; // never echo the key back
     setKeyState(Boolean(config?.hasApiKey));
-    syncHeaderPills();
     // Populate the model combobox lists BEFORE setting the saved model values,
     // so the <input> retains the selection instead of being cleared (a <select>
     // with no matching option would wipe it).
     await refreshModelLists();
     $('agentplayground_model_a').value = config?.modelA || '';
     $('agentplayground_model_b').value = config?.modelB || '';
+    syncHeaderPills();
 }
 
 async function saveCurrentConfig() {
@@ -590,6 +590,7 @@ async function runPlayground() {
     }
 
     $('agentplayground_run').disabled = true;
+    const runStartTime = Date.now();
     setStatus(state.mode === 'compare' ? 'Running both models...' : 'Running model...');
 
     try {
@@ -621,6 +622,8 @@ async function runPlayground() {
         }
 
         syncHeaderPills();
+        const elapsed = ((Date.now() - runStartTime) / 1000).toFixed(2);
+        $('runbarText').textContent = `last run · ${elapsed}s · ${original ? original.length.toLocaleString() : '0'} chars`;
         setStatus(state.mode === 'compare' ? 'Comparison complete.' : 'Run complete.');
     } catch (error) {
         console.error('[Agent Playground] Run failed', error);

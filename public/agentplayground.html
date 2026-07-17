@@ -5,656 +5,143 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Agent Playground</title>
     <link rel="stylesheet" href="/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
         :root {
-            --ap-pk: var(--SmartThemeQuoteColor, #f14da6);
-            --ap-lt: color-mix(in srgb, var(--ap-pk) 28%, white);
-            --ap-bg: color-mix(in srgb, var(--SmartThemeBlurTintColor, #1a1218) 92%, black 8%);
-            --ap-bg2: color-mix(in srgb, var(--ap-bg) 88%, white 4%);
-            --ap-bg3: color-mix(in srgb, var(--ap-bg) 82%, white 7%);
-            --ap-border: color-mix(in srgb, var(--SmartThemeBorderColor, #3d2e3a) 70%, transparent);
-            --ap-border-pk: color-mix(in srgb, var(--ap-pk) 40%, transparent);
-            --ap-text: var(--SmartThemeBodyColor, #e8d8e4);
-            --ap-text2: color-mix(in srgb, var(--ap-text) 54%, transparent);
-            --ap-font-mono: var(--monoFontFamily, 'Courier New', monospace);
-            --ap-font-pixel: 'Press Start 2P', monospace;
-            --ap-font-terminal: 'VT323', monospace;
-            --ap-font-body: var(--mainFontFamily, sans-serif);
-        }
-
-        body.agent-playground-body {
-            margin: 0;
-            min-height: 100vh;
-            overflow-y: auto;
-            background: var(--ap-bg);
-            color: var(--ap-text);
-            font-family: var(--mainFontFamily, sans-serif);
-        }
-
-        .ap-shell {
-            min-height: 100vh;
-            padding: 12px;
-            box-sizing: border-box;
-        }
-
-        .ap {
-            background: var(--ap-bg);
-            color: var(--ap-text);
-            border-radius: 14px;
-            border: 1px solid var(--ap-border);
-            overflow: hidden;
-            box-shadow: 0 18px 50px rgba(0, 0, 0, 0.25);
-            min-height: calc(100vh - 24px);
-        }
-
-        .ap-topbar {
-            background: var(--ap-bg2);
-            border-bottom: 1px solid var(--ap-border-pk);
-            padding: 0 16px;
-            min-height: 44px;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            flex-wrap: wrap;
-        }
-
-        .ap-topbar-title {
-            color: var(--ap-pk);
-            font-size: 12px;
-            letter-spacing: 3px;
-            text-transform: uppercase;
-            font-family: var(--ap-font-pixel);
-        }
-
-        .ap-pill {
-            background: var(--ap-bg3);
-            border: 1px solid var(--ap-border);
-            border-radius: 5px;
-            padding: 4px 8px;
-            font-size: 11px;
-            color: var(--ap-lt);
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            min-height: 28px;
-            box-sizing: border-box;
-            font-family: var(--ap-font-body);
-        }
-
-        .ap-pill-dot {
-            width: 6px;
-            height: 6px;
-            border-radius: 999px;
-            background: var(--ap-pk);
-            flex: 0 0 auto;
-        }
-
-        .ap-layout {
-            display: grid;
-            grid-template-columns: 260px 1fr;
-            min-height: calc(100vh - 70px);
-        }
-
-        .ap-sidebar {
-            background: var(--ap-bg2);
-            border-right: 1px solid var(--ap-border);
-            padding: 14px;
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-        }
-
-        .ap-section-label {
-            font-size: 10px;
-            letter-spacing: 2px;
-            text-transform: uppercase;
-            color: var(--ap-text2);
-            padding: 0 2px 6px;
-            border-bottom: 1px solid var(--ap-border);
-            font-family: var(--ap-font-pixel);
-        }
-
-        .ap-agents-list {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
-
-        .ap-agent-card {
-            background: var(--ap-bg3);
-            border: 1px solid var(--ap-border);
-            border-radius: 8px;
-            padding: 10px;
-            cursor: pointer;
-            transition: border-color 160ms ease, transform 160ms ease, opacity 160ms ease;
-            position: relative;
-        }
-
-        .ap-agent-card:hover {
-            border-color: var(--ap-border-pk);
-            transform: translateY(-1px);
-        }
-
-        .ap-agent-card.is-active {
-            border-color: var(--ap-border-pk);
-            background: color-mix(in srgb, var(--ap-pk) 10%, var(--ap-bg3));
-            box-shadow:
-                inset 0 0 0 1px color-mix(in srgb, var(--ap-pk) 55%, transparent),
-                0 0 12px color-mix(in srgb, var(--ap-pk) 36%, transparent),
-                0 0 28px color-mix(in srgb, var(--ap-pk) 16%, transparent);
-            animation: ap-active-agent-pulse 2200ms ease-in-out infinite;
-        }
-
-        .ap-agent-card.is-active::before {
-            content: '';
-            position: absolute;
-            left: -1px;
-            top: 10px;
-            bottom: 10px;
-            width: 3px;
-            border-radius: 999px;
-            background: var(--ap-pk);
-            box-shadow: 0 0 10px var(--ap-pk);
-        }
-
-        @keyframes ap-active-agent-pulse {
-            0%, 100% {
-                box-shadow:
-                    inset 0 0 0 1px color-mix(in srgb, var(--ap-pk) 55%, transparent),
-                    0 0 10px color-mix(in srgb, var(--ap-pk) 30%, transparent),
-                    0 0 22px color-mix(in srgb, var(--ap-pk) 12%, transparent);
-            }
-            50% {
-                box-shadow:
-                    inset 0 0 0 1px color-mix(in srgb, var(--ap-pk) 90%, transparent),
-                    0 0 18px color-mix(in srgb, var(--ap-pk) 46%, transparent),
-                    0 0 34px color-mix(in srgb, var(--ap-pk) 24%, transparent);
-            }
-        }
-
-        .ap-agent-name {
-            color: var(--ap-pk);
-            font-size: 13px;
-            font-family: var(--ap-font-pixel);
-            font-size: 12px;
-            line-height: 1.35;
-        }
-
-        .ap-agent-desc {
-            color: var(--ap-text2);
-            font-size: 11px;
-            margin-top: 4px;
-            line-height: 1.45;
-            font-family: var(--ap-font-body);
-        }
-
-        .ap-tags {
-            display: flex;
-            gap: 4px;
-            margin-top: 8px;
-            flex-wrap: wrap;
-        }
-
-        .ap-tag {
-            background: color-mix(in srgb, var(--ap-pk) 12%, transparent);
-            border: 1px solid var(--ap-border-pk);
-            border-radius: 4px;
-            padding: 2px 6px;
-            font-size: 10px;
-            color: var(--ap-lt);
-            font-family: var(--ap-font-pixel);
-        }
-
-        .ap-stat {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            background: var(--ap-bg3);
-            border: 1px solid var(--ap-border);
-            border-radius: 6px;
-            padding: 7px 9px;
-        }
-
-        .ap-stat-label {
-            font-size: 11px;
-            color: var(--ap-text2);
-            font-family: var(--ap-font-pixel);
-        }
-
-        .ap-stat-value {
-            font-size: 11px;
-            color: var(--ap-lt);
-            font-family: var(--ap-font-body);
-            line-height: 1.2;
-        }
-
-        .ap-prompt-preview {
-            margin-top: auto;
-            font-size: 11px;
-            color: var(--ap-text2);
-            line-height: 1.5;
-            border-top: 1px solid var(--ap-border);
-            padding-top: 10px;
-            font-family: var(--ap-font-body);
-        }
-
-        .ap-prompt-preview strong {
-            color: var(--ap-lt);
-            display: block;
-            margin-bottom: 4px;
-            font-family: var(--ap-font-pixel);
-        }
-
-        .ap-main {
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-        }
-
-        .ap-config {
-            background: var(--ap-bg2);
-            border-bottom: 1px solid var(--ap-border);
-            padding: 14px 16px;
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 12px 14px;
-        }
-
-        .ap-field {
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-        }
-
-        .ap-field--full {
-            grid-column: 1 / -1;
-        }
-
-        /* Test mode: model field spans full width, Model B column removed. */
-        .ap-config.is-test .ap-field:not(.ap-field--full) {
-            grid-column: 1 / -1;
-        }
-
-        /* Engraved-search combobox (character picker) */
-        .ap-combobox {
-            position: relative;
-        }
-
-        .ap-combobox-input {
-            width: 100%;
-        }
-
-        .ap-combobox-list {
-            position: absolute;
-            z-index: 40;
-            top: calc(100% + 4px);
-            left: 0;
-            right: 0;
-            max-height: 240px;
-            overflow-y: auto;
-            background: var(--ap-bg2);
-            border: 1px solid var(--ap-border-pk);
-            border-radius: 7px;
-            box-shadow: 0 12px 28px rgba(0, 0, 0, 0.5);
-            padding: 4px;
-        }
-
-        .ap-combobox-list .ap-combo-option {
-            padding: 9px 10px;
-            border-radius: 5px;
-            color: var(--ap-text);
-            font-family: var(--ap-font-body);
-            font-size: 14px;
-            cursor: pointer;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        .ap-combobox-list .ap-combo-option:hover,
-        .ap-combobox-list .ap-combo-option.is-active {
-            background: color-mix(in srgb, var(--ap-pk) 20%, var(--ap-bg2));
-            color: var(--ap-lt);
-        }
-
-        .ap-combobox-list .ap-combo-empty {
-            padding: 9px 10px;
-            color: var(--ap-text2);
-            font-size: 13px;
-            font-family: var(--ap-font-body);
-        }
-
-        .ap-field label {
-            font-size: 10px;
-            color: var(--ap-text2);
-            letter-spacing: 1.6px;
-            text-transform: uppercase;
-            font-family: var(--ap-font-pixel);
-        }
-
-        .ap-input,
-        .ap-select {
-            width: 100%;
-            min-height: 42px;
-            box-sizing: border-box;
-            background: color-mix(in srgb, var(--ap-bg3) 90%, white 2%);
-            border: 1px solid var(--ap-border);
-            border-radius: 6px;
-            padding: 8px 12px;
-            color: var(--ap-text);
-            font: inherit;
-            font-family: var(--ap-font-body);
-            font-size: 15px;
-        }
-
-        .ap-input:focus,
-        .ap-select:focus {
-            outline: none;
-            border-color: var(--ap-border-pk);
-            box-shadow: 0 0 0 1px color-mix(in srgb, var(--ap-pk) 26%, transparent);
-        }
-
-        .ap-actions {
-            grid-column: 1 / -1;
-            display: flex;
-            gap: 10px;
-            align-items: center;
-            flex-wrap: wrap;
-        }
-
-        .ap-button {
-            min-height: 40px;
-            padding: 0 14px;
-            border-radius: 7px;
-            border: 1px solid var(--ap-border-pk);
-            background: var(--ap-bg3);
-            color: var(--ap-text);
-            font: inherit;
-            cursor: pointer;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            font-size: 11px;
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            font-family: var(--ap-font-pixel);
-        }
-
-        .ap-button:hover {
-            border-color: var(--ap-pk);
-        }
-
-        .ap-button--primary {
-            background: color-mix(in srgb, var(--ap-pk) 16%, var(--ap-bg3));
-        }
-
-        .ap-mode-toggle {
-            display: flex;
-            gap: 8px;
-        }
-
-        .ap-mode-btn {
-            flex: 1 1 0;
-            min-height: 40px;
-            padding: 0 12px;
-            border-radius: 7px;
-            border: 1px solid var(--ap-border-pk);
-            background: var(--ap-bg3);
-            color: var(--ap-text2);
-            font: inherit;
-            cursor: pointer;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            font-size: 10px;
-            font-family: var(--ap-font-pixel);
-            transition: color 160ms ease, border-color 160ms ease, background 160ms ease;
-        }
-
-        .ap-mode-btn:hover {
-            border-color: var(--ap-pk);
-            color: var(--ap-text);
-        }
-
-        .ap-mode-btn.is-active {
-            color: var(--ap-lt);
-            background: color-mix(in srgb, var(--ap-pk) 18%, var(--ap-bg3));
-            border-color: var(--ap-pk);
-            box-shadow: 0 0 12px color-mix(in srgb, var(--ap-pk) 36%, transparent);
-        }
-
-        .ap-status {
-            font-size: 12px;
-            color: var(--ap-text2);
-            font-family: var(--ap-font-body);
-        }
-
-        .ap-chat-note {
-            font-size: 10px;
-            color: var(--ap-text2);
-            line-height: 1.4;
-            font-family: var(--ap-font-body);
-            padding: 4px 2px 0;
-            opacity: 0.8;
-        }
-
-        .ap-context-strip {
-            background: var(--ap-bg2);
-            border-bottom: 1px solid var(--ap-border);
-            padding: 10px 16px;
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-        }
-
-        .ap-context-row {
-            display: flex;
-            align-items: baseline;
-            gap: 8px;
-            min-width: 0;
-        }
-
-        .ap-context-tag {
-            font-size: 10px;
-            letter-spacing: 1px;
-            text-transform: uppercase;
-            padding: 2px 6px;
-            border-radius: 4px;
-            flex: 0 0 auto;
-            border: 1px solid var(--ap-border);
-            background: var(--ap-bg3);
-            color: var(--ap-text2);
-            font-family: var(--ap-font-pixel);
-        }
-
-        .ap-context-tag.current {
-            border-color: var(--ap-border-pk);
-            background: color-mix(in srgb, var(--ap-pk) 12%, transparent);
-            color: var(--ap-pk);
-        }
-
-        .ap-context-text {
-            font-size: 12px;
-            color: var(--ap-text2);
-            font-family: var(--ap-font-body);
-            font-size: 12px;
-            line-height: 1.35;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            min-width: 0;
-        }
-
-        .ap-context-text.current {
-            color: var(--ap-text);
-        }
-
-        .ap-panels {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            min-height: 0;
-            flex: 1;
-        }
-
-        .ap-panels.is-single {
-            grid-template-columns: 1fr;
-        }
-
-        .ap-panels.is-single .ap-panel:first-child {
-            border-right: none;
-        }
-
-        .ap-panel {
-            border-right: 1px solid var(--ap-border);
-            display: flex;
-            flex-direction: column;
-            min-height: 0;
-        }
-
-        .ap-panel:last-child {
-            border-right: none;
-        }
-
-        .ap-panel-header {
-            background: var(--ap-bg2);
-            border-bottom: 1px solid var(--ap-border);
-            padding: 10px 14px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            flex-wrap: wrap;
-        }
-
-        .ap-panel-model {
-            font-size: 12px;
-            color: var(--ap-pk);
-            font-family: var(--ap-font-pixel);
-            font-size: 12px;
-            line-height: 1.35;
-        }
-
-        .ap-panel-badge {
-            margin-left: auto;
-            font-size: 10px;
-            padding: 2px 7px;
-            border-radius: 4px;
-            border: 1px solid var(--ap-border);
-            color: var(--ap-text2);
-            background: var(--ap-bg3);
-            font-family: var(--ap-font-pixel);
-        }
-
-        .ap-panel-badge.done {
-            color: #7dda7d;
-            background: rgba(47, 93, 47, 0.28);
-            border-color: rgba(98, 174, 98, 0.35);
-        }
-
-        .ap-panel-body {
-            display: block;
-            min-height: 0;
-            flex: 1;
-        }
-
-        .ap-block {
-            min-height: auto;
-            display: block;
-            border-bottom: 1px solid var(--ap-border);
-        }
-
-        .ap-block:last-child {
-            border-bottom: none;
-        }
-
-        .ap-block-label {
-            font-size: 10px;
-            letter-spacing: 1px;
-            text-transform: uppercase;
-            color: var(--ap-text2);
-            padding: 10px 14px 6px;
-            font-family: var(--ap-font-pixel);
-        }
-
-        .ap-scroll {
-            min-height: 0;
-            overflow: visible;
-            padding: 0 14px 14px;
-        }
-
-        .ap-scroll pre,
-        .ap-scroll {
-            font-family: var(--ap-font-body);
-            font-size: 14px;
-            line-height: 1.6;
-            color: var(--ap-text);
-        }
-
-        .ap-scroll pre {
-            margin: 0;
-            white-space: pre-wrap;
-            overflow-wrap: anywhere;
-            word-break: break-word;
-        }
-
-        .ap-diff {
-            white-space: pre-wrap;
-            overflow-wrap: anywhere;
-            word-break: break-word;
-        }
-
-        .ap-diff del,
-        .ap-diff ins,
-        .ap-diff span {
-            white-space: pre-wrap;
-            overflow-wrap: anywhere;
-            word-break: break-word;
-        }
-
-        .ap-diff del {
-            background: rgba(130, 24, 42, 0.28);
-            color: #ff9191;
-            text-decoration: line-through;
-            border-radius: 3px;
-            padding: 0 2px;
-        }
-
-        .ap-diff ins {
-            background: rgba(34, 112, 53, 0.28);
-            color: #8fffc0;
-            text-decoration: none;
-            border-radius: 3px;
-            padding: 0 2px;
-        }
-
-        .ap-reasoning-empty {
-            color: var(--ap-text2);
-            font-style: italic;
-        }
-
-        .displayNone {
-            display: none !important;
-        }
+            --pk: #F14DA6; --lt: #D4ABD4; --lt-soft: #e8c8e8;
+            --bg: #120813; --bg2: #1a0e1f; --bg3: #22132a; --bg4: #2b1935;
+            --border: rgba(212,171,212,0.18); --border-pk: rgba(241,77,166,0.4);
+            --text: #f0d8ee; --text2: #a89ab0; --text3: #7a6a85;
+            --green: #7dda7d; --red: #ff7a8a; --amber: #ffc66e;
+            --pixel: 'Press Start 2P', monospace; --term: 'VT323', monospace; --body: 'Inter', sans-serif;
+            --hard-shadow: 0 0 0 1px rgba(0,0,0,0.4), 4px 4px 0 0 rgba(0,0,0,0.45);
+        }
+        * { box-sizing: border-box }
+        body.agent-playground-body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--body); min-height: 100vh; padding: 12px }
+        .ap-shell { min-height: 100vh; box-sizing: border-box }
+        .ap { background: linear-gradient(180deg, var(--bg2), var(--bg)); border-radius: 10px; border: 1px solid var(--border); overflow: hidden; box-shadow: var(--hard-shadow); min-height: calc(100vh - 24px) }
+        .ap-topbar { display: flex; align-items: center; gap: 12px; padding: 10px 16px; background: rgba(34,19,42,0.6); border-bottom: 1px solid var(--border-pk); flex-wrap: wrap; min-height: 44px; justify-content: center }
+        .ap-topbar-title { color: var(--pk); font-size: 11px; letter-spacing: 2px; text-transform: uppercase; font-family: var(--pixel); text-shadow: 0 0 8px rgba(241,77,166,0.5); flex-basis: 100%; text-align: center }
+        .ap-pill { background: var(--bg3); border: 1px solid var(--border); border-radius: 5px; padding: 4px 8px; font-size: 11px; color: var(--lt); display: inline-flex; align-items: center; gap: 6px; min-height: 28px; font-family: var(--body) }
+        .ap-pill-dot { width: 6px; height: 6px; border-radius: 999px; background: var(--pk); flex: 0 0 auto }
+        .ap-layout { display: grid; grid-template-columns: 260px 1fr; height: calc(100vh - 70px) }
+        .ap-sidebar { background: rgba(26,14,31,0.4); border-right: 1px solid var(--border); padding: 14px; display: flex; flex-direction: column; gap: 12px }
+        .ap-section-label { font-family: var(--pixel); font-size: 8px; color: var(--text2); letter-spacing: 2px; text-transform: uppercase; padding-bottom: 6px; border-bottom: 1px dashed var(--border); display: flex; justify-content: space-between }
+        .ap-agents-list { display: flex; flex-direction: column; gap: 8px }
+        .ap-agent-card { background: var(--bg3); border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px; cursor: pointer; transition: all .15s; text-align: left; font: inherit; color: inherit; width: 100% }
+        .ap-agent-card:hover { border-color: var(--border-pk); transform: translate(-1px,-1px); box-shadow: 2px 2px 0 rgba(241,77,166,0.3) }
+        .ap-agent-card.is-active { border-color: var(--pk); background: linear-gradient(135deg,rgba(241,77,166,0.18),rgba(34,19,42,0.5)); box-shadow: inset 3px 0 0 var(--pk), 0 0 14px rgba(241,77,166,0.2) }
+        .ap-agent-name { font-family: var(--pixel); font-size: 9px; color: var(--pk); text-transform: uppercase; letter-spacing: 1px }
+        .ap-agent-desc { color: var(--text2); font-size: 11px; margin-top: 4px; line-height: 1.45; font-family: var(--body) }
+        .ap-tags { display: flex; gap: 4px; margin-top: 8px; flex-wrap: wrap }
+        .ap-tag { background: rgba(241,77,166,0.1); border: 1px solid var(--border-pk); border-radius: 4px; padding: 2px 6px; font-size: 10px; color: var(--lt); font-family: var(--pixel) }
+        .ap-stat { display: flex; align-items: center; justify-content: space-between; background: var(--bg3); border: 1px solid var(--border); border-radius: 6px; padding: 7px 10px }
+        .ap-stat-label { font-size: 10px; color: var(--text2); font-family: var(--pixel) }
+        .ap-stat-value { font-size: 14px; color: var(--lt-soft); font-family: var(--term); margin-left: auto }
+        .ap-field { display: flex; flex-direction: column; gap: 6px }
+        .ap-field--full { grid-column: 1 / -1 }
+        .ap-field label { font-family: var(--pixel); font-size: 7px; color: var(--text2); letter-spacing: 1px; text-transform: uppercase }
+        .ap-combobox { position: relative }
+        .ap-combobox-input { width: 100% }
+        .ap-combobox-list { position: absolute; z-index: 40; top: calc(100% + 4px); left: 0; right: 0; max-height: 240px; overflow-y: auto; background: var(--bg2); border: 1px solid var(--border-pk); border-radius: 7px; box-shadow: 0 12px 28px rgba(0,0,0,0.5); padding: 4px }
+        .ap-combobox-list .ap-combo-option { padding: 9px 10px; border-radius: 5px; color: var(--text); font-family: var(--body); font-size: 14px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+        .ap-combobox-list .ap-combo-option:hover, .ap-combobox-list .ap-combo-option.is-active { background: color-mix(in srgb, var(--pk) 20%, var(--bg2)); color: var(--lt) }
+        .ap-combobox-list .ap-combo-empty { padding: 9px 10px; color: var(--text2); font-size: 13px; font-family: var(--body) }
+        .ap-input, .ap-select { width: 100%; min-height: 38px; box-sizing: border-box; background: var(--bg3); border: 1px solid var(--border); border-radius: 5px; padding: 8px 10px; color: var(--text); font-family: var(--body); font-size: 14px }
+        .ap-input:focus, .ap-select:focus { outline: none; border-color: var(--border-pk); box-shadow: 0 0 0 1px color-mix(in srgb, var(--pk) 26%, transparent) }
+        .ap-main { display: flex; flex-direction: column; overflow: hidden; min-height: 0 }
+        .ap-context-strip { background: rgba(34,19,42,0.5); border-bottom: 1px solid var(--border); padding: 10px 14px; display: flex; flex-direction: column; gap: 6px }
+        .ap-context-row { display: flex; align-items: baseline; gap: 8px; min-width: 0 }
+        .ap-context-tag { font-family: var(--pixel); font-size: 7px; letter-spacing: 1px; text-transform: uppercase; padding: 2px 6px; border-radius: 4px; flex: 0 0 auto; border: 1px solid var(--border); background: var(--bg3); color: var(--text2) }
+        .ap-context-tag.current { border-color: var(--border-pk); background: rgba(241,77,166,0.12); color: var(--pk) }
+        .ap-context-text { font-family: var(--term); font-size: 16px; color: var(--text2); line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0 }
+        .ap-context-text.current { color: var(--text) }
+        .ap-panels { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: minmax(0, 1fr); flex: 1; min-height: 0; border-top: 1px solid var(--border) }
+        .ap-panels.is-single { grid-template-columns: 1fr }
+        .ap-panels.is-single .ap-panel:first-child { border-right: none }
+        .ap-panel { border-right: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0; overflow: hidden }
+        .ap-panel:last-child { border-right: none }
+        .ap-panel-header { background: rgba(34,19,42,0.7); border-bottom: 1px solid var(--border-pk); padding: 10px 14px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap }
+        .ap-panel-model { font-family: var(--pixel); font-size: 10px; color: var(--pk); text-transform: uppercase; letter-spacing: 1.5px; text-shadow: 0 0 8px rgba(241,77,166,0.45) }
+        .ap-panel-badge { margin-left: auto; font-family: var(--pixel); font-size: 8px; padding: 3px 8px; border: 1px solid var(--border); color: var(--text2); background: var(--bg3); border-radius: 3px; text-transform: uppercase; letter-spacing: 0.5px }
+        .ap-panel-badge.done { color: var(--green); border-color: var(--green); background: rgba(125,218,125,0.1) }
+        .ap-panel-body { flex: 1; padding: 12px 14px; overflow: auto; display: flex; flex-direction: column; gap: 12px; min-height: 0 }
+        .ap-block { display: block }
+        .ap-block-label { font-family: var(--pixel); font-size: 8px; color: var(--text2); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 6px }
+        .ap-scroll { min-height: auto }
+        .ap-scroll pre, .ap-scroll { font-family: var(--term); font-size: 16px; line-height: 1.45; color: var(--text) }
+        .ap-scroll pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word }
+        .ap-diff { white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word }
+        .ap-diff del, .ap-diff ins, .ap-diff span { white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word }
+        .ap-diff del { background: rgba(255,122,138,0.18); color: #ffb1bd; text-decoration: line-through; padding: 1px 3px; border-radius: 3px }
+        .ap-diff ins { background: rgba(125,218,125,0.18); color: var(--green); text-decoration: none; padding: 1px 3px; border-radius: 3px }
+        .ap-reasoning-empty { color: var(--text2); font-style: italic }
+        .ap-reasoning { background: var(--bg); border: 1px dashed var(--border); border-radius: 5px; padding: 10px 12px; margin-top: auto }
+        .ap-reasoning summary { font-family: var(--pixel); font-size: 8px; color: var(--text2); letter-spacing: 1px; text-transform: uppercase; cursor: pointer; list-style: none; display: flex; align-items: center; gap: 6px }
+        .ap-reasoning summary::before { content: '▶'; font-family: var(--term); font-size: 11px; color: var(--lt) }
+        .ap-reasoning[open] summary::before { content: '▼' }
+        .ap-reasoning pre { margin: 8px 0 0; font-family: var(--term); font-size: 16px; color: var(--text2); white-space: pre-wrap; line-height: 1.4; overflow-wrap: anywhere; word-break: break-word }
+        .displayNone { display: none !important }
+        .ap-chat-note { font-size: 10px; color: var(--text2); line-height: 1.4; font-family: var(--body); padding: 4px 2px 0; opacity: 0.8 }
+        .ap-status { font-size: 11px; color: var(--text2); font-family: var(--body) }
+        .ap-button { font-family: var(--pixel); font-size: 9px; padding: 8px 12px; border-radius: 5px; border: 1px solid var(--border-pk); background: var(--bg3); color: var(--text); cursor: pointer; text-transform: uppercase; letter-spacing: 0.5px; display: inline-flex; align-items: center; gap: 6px }
+        .ap-button:hover { border-color: var(--pk) }
+        .ap-button--primary { background: linear-gradient(135deg, var(--pk), #ff6ba6); color: #120813; box-shadow: 0 0 14px rgba(241,77,166,0.35) }
+        .ap-mode-toggle { display: flex; gap: 4px; background: var(--bg3); border: 1px solid var(--border); border-radius: 5px; padding: 3px; width: fit-content }
+        .ap-mode-btn { font-family: var(--pixel); font-size: 8px; padding: 6px 10px; border: 1px solid transparent; background: transparent; color: var(--text2); border-radius: 3px; cursor: pointer; text-transform: uppercase; letter-spacing: 0.5px; transition: all .15s }
+        .ap-mode-btn:hover { border-color: var(--border-pk); color: var(--text) }
+        .ap-mode-btn.is-active { background: var(--pk); color: #120813; box-shadow: 0 0 8px rgba(241,77,166,0.4) }
+
+        /* Config Drawer */
+        .config-drawer { position: fixed; top: 12px; right: 12px; bottom: 12px; width: 360px; overflow-y: auto; background: linear-gradient(180deg, var(--bg2), var(--bg3)); border: 1px solid var(--border); border-radius: 10px; box-shadow: -4px 0 40px rgba(241,77,166,0.12), var(--hard-shadow); padding: 16px; display: flex; flex-direction: column; z-index: 100; transform: translateX(0); transition: transform .3s cubic-bezier(0.16,1,0.3,1) }
+        .config-drawer.hidden { transform: translateX(100%); pointer-events: none }
+        .drawer-handle { position: fixed; z-index: 101; width: 36px; height: 56px; background: linear-gradient(135deg, var(--pk), #ff6ba6); border: 2px solid var(--pk); cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: -4px 0 16px rgba(241,77,166,0.3); font-family: var(--term); font-size: 18px; color: var(--lt); text-shadow: 0 0 6px rgba(241,77,166,0.5); top: 50%; transform: translateY(-50%); right: calc(12px + 360px); border-radius: 8px 0 0 8px; transition: right .3s cubic-bezier(0.16,1,0.3,1) }
+        .drawer-handle.handle-right { right: 12px }
+        .drawer-head { font-family: var(--pixel); font-size: 10px; color: var(--lt); letter-spacing: 2px; text-transform: uppercase; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border-pk) }
+        .config-drawer .ap-field { margin-bottom: 10px }
+        .config-drawer .ap-actions { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: auto; align-items: center }
+        .config-drawer .ap-status { }
+        .ap-run-row, .ap-pills-row, .ap-chat-row { display: contents }
 
         @media (max-width: 1100px) {
-            .ap-layout {
-                grid-template-columns: 1fr;
-            }
-
-            .ap-sidebar {
-                border-right: none;
-                border-bottom: 1px solid var(--ap-border);
-            }
-
-            .ap-panels,
-            .ap-config {
-                grid-template-columns: 1fr;
-            }
+            .ap-layout { grid-template-columns: 1fr }
+            .ap-sidebar { border-right: none; border-bottom: 1px solid var(--border) }
+            .ap-panels { grid-template-columns: 1fr; grid-template-rows: repeat(2, minmax(0, 1fr)); grid-auto-rows: minmax(0, 1fr) }
+            .ap-panels.is-single { grid-template-rows: minmax(0, 1fr) }
+            .ap-topbar { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; align-items: stretch }
+            .ap-topbar > * { min-width: 0 }
+            .ap-topbar-title { grid-column: 1 / -1 }
+            .ap-mode-toggle { grid-column: 1 / -1; width: 100% }
+            .ap-mode-toggle .ap-mode-btn { flex: 1; text-align: center }
+            .runbar { grid-column: 1 / -1; margin-left: 0; width: 100% }
+            .runbar #runbarText { flex: 1 }
+            .ap-run-row { display: block; grid-column: 1 / -1; order: 5 }
+            .ap-run-row .ap-button { width: 100% }
+            .ap-topbar .ap-pill { grid-column: auto }
+            .ap-pills-row { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; order: 4 }
+            .ap-pills-row.is-test .ap-pill:first-child { grid-column: 1 / 3 }
+            .ap-chat-row { display: block; grid-column: 1 / -1; order: 3 }
+            .ap-chat-row .ap-pill-chat { width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+            .ap-config-btn .cog { font-family: 'Segoe UI Symbol', sans-serif; font-size: 20px; line-height: 1 }
+            .config-drawer { width: calc(100% - 24px); height: auto; max-height: 45vh; top: auto; bottom: 12px; left: 12px; right: 12px; border-radius: 10px 10px 0 0; min-height: 200px; overflow-y: auto }
+            .config-drawer.hidden { transform: translateY(100%) }
+            .drawer-handle { display: none }
         }
 
-        @media (prefers-reduced-motion: reduce) {
-            .ap-agent-card.is-active {
-                animation: none;
-            }
+        /* Runbar */
+        .runbar { display: flex; align-items: center; gap: 8px; background: var(--bg3); border: 1px solid var(--border); border-radius: 6px; padding: 4px 10px; font-family: var(--term); font-size: 18px; color: var(--lt) }
+        .runbar .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--amber); box-shadow: 0 0 6px var(--amber); animation: pulse 1.6s ease-in-out infinite }
+        @keyframes pulse { 50% { opacity: 0.4 } }
+
+        .ap-config-btn { display: none; font-family: var(--pixel); font-size: 10px; padding: 8px 12px; border-radius: 5px; border: 1px solid var(--border-pk); background: var(--bg3); color: var(--lt); cursor: pointer; text-transform: uppercase; letter-spacing: 0.5px; align-items: center; gap: 4px; box-shadow: var(--hard-shadow) }
+        .ap-config-btn:hover { border-color: var(--pk); color: var(--text) }
+        .ap-config-btn.is-active { background: linear-gradient(135deg, var(--pk), #ff6ba6); color: #120813; box-shadow: 0 0 14px rgba(241,77,166,0.35) }
+
+        @media (max-width: 1100px) {
+            .ap-config-btn { display: flex; justify-content: center; align-items: center; width: 36px; height: 32px; padding: 0 }
         }
+
+        @media (prefers-reduced-motion: reduce) { .ap-agent-card.is-active { animation: none } }
     </style>
 </head>
 <body class="agent-playground-body">
@@ -662,9 +149,22 @@
         <div class="ap">
             <div class="ap-topbar">
                 <span class="ap-topbar-title">✦ Agent Playground</span>
-                <span class="ap-pill"><span class="ap-pill-dot"></span><span id="agentplayground_top_model_a">Model A</span></span>
-                <span class="ap-pill" id="agentplayground_top_model_b_pill"><span class="ap-pill-dot"></span><span id="agentplayground_top_model_b">Model B</span></span>
-                <span class="ap-pill"><span class="ap-pill-dot"></span><span id="agentplayground_top_chat">No chat selected</span></span>
+                <div class="ap-mode-toggle">
+                    <button id="agentplayground_mode_compare" class="ap-mode-btn is-active" type="button" data-mode="compare">Compare (A vs B)</button>
+                    <button id="agentplayground_mode_test" class="ap-mode-btn" type="button" data-mode="test">Test (single)</button>
+                </div>
+                <div class="runbar"><span class="dot"></span><span id="runbarText">last run · 0.00s · 0 chars</span></div>
+                <div class="ap-chat-row">
+                    <span class="ap-pill ap-pill-chat"><span class="ap-pill-dot"></span><span id="agentplayground_top_chat">No chat selected</span></span>
+                </div>
+                <div class="ap-pills-row">
+                    <span class="ap-pill"><span class="ap-pill-dot"></span><span id="agentplayground_top_model_a">Model A</span></span>
+                    <span class="ap-pill" id="agentplayground_top_model_b_pill"><span class="ap-pill-dot"></span><span id="agentplayground_top_model_b">Model B</span></span>
+                    <button id="agentplayground_config_toggle" class="ap-config-btn" title="Toggle config"><span class="cog">⚙</span></button>
+                </div>
+                <div class="ap-run-row">
+                    <button id="agentplayground_run" class="ap-button ap-button--primary">▶ Run Both</button>
+                </div>
             </div>
 
             <div class="ap-layout">
@@ -692,54 +192,6 @@
                 </aside>
 
                 <section class="ap-main">
-                    <div class="ap-config" id="agentplayground_config">
-                        <div class="ap-field ap-field--full">
-                            <label for="agentplayground_config_select">Saved Configs</label>
-                            <select id="agentplayground_config_select" class="ap-select"></select>
-                        </div>
-                        <div class="ap-field ap-field--full">
-                            <label for="agentplayground_config_label">Config Name</label>
-                            <input id="agentplayground_config_label" class="ap-input" type="text" placeholder="e.g. OpenRouter Sonnet">
-                        </div>
-                        <div class="ap-field ap-field--full">
-                            <label>Mode</label>
-                            <div class="ap-mode-toggle">
-                                <button id="agentplayground_mode_compare" class="ap-mode-btn is-active" type="button">Compare (A vs B)</button>
-                                <button id="agentplayground_mode_test" class="ap-mode-btn" type="button">Test (single)</button>
-                            </div>
-                        </div>
-                        <div class="ap-field ap-field--full">
-                            <label for="agentplayground_provider_url">Provider</label>
-                            <input id="agentplayground_provider_url" class="ap-input" type="url" placeholder="https://openrouter.ai/api/v1">
-                        </div>
-                        <div class="ap-field">
-                            <label for="agentplayground_model_a"><span id="agentplayground_model_a_label">Model A</span></label>
-                            <div class="ap-combobox" id="agentplayground_model_a_combo">
-                                <input id="agentplayground_model_a" class="ap-input ap-combobox-input" type="text" placeholder="select or type a model id" autocomplete="off" spellcheck="false">
-                                <div class="ap-combobox-list displayNone" id="agentplayground_model_a_list"></div>
-                            </div>
-                        </div>
-                        <div class="ap-field" id="agentplayground_model_b_field">
-                            <label for="agentplayground_model_b">Model B</label>
-                            <div class="ap-combobox" id="agentplayground_model_b_combo">
-                                <input id="agentplayground_model_b" class="ap-input ap-combobox-input" type="text" placeholder="select or type a model id" autocomplete="off" spellcheck="false">
-                                <div class="ap-combobox-list displayNone" id="agentplayground_model_b_list"></div>
-                            </div>
-                        </div>
-                        <div class="ap-field ap-field--full">
-                            <label for="agentplayground_provider_key">API Key</label>
-                            <input id="agentplayground_provider_key" class="ap-input" type="password" placeholder="Stored server-side after save">
-                        </div>
-                        <div class="ap-actions">
-                            <button id="agentplayground_save_config" class="ap-button">Save Config</button>
-                            <button id="agentplayground_new_config" class="ap-button">+ New</button>
-                            <button id="agentplayground_delete_config" class="ap-button">Delete</button>
-                            <button id="agentplayground_run" class="ap-button ap-button--primary">▶ Run Both</button>
-                            <span id="agentplayground_key_state" class="ap-status">API key not saved yet.</span>
-                            <span id="agentplayground_status" class="ap-status">Ready.</span>
-                        </div>
-                    </div>
-
                     <div class="ap-context-strip">
                         <div class="ap-context-row">
                             <span class="ap-context-tag">prior</span>
@@ -766,10 +218,10 @@
                                     <div class="ap-block-label">Diff vs Original</div>
                                     <div id="agentplayground_diff_a" class="ap-scroll ap-diff">No result yet.</div>
                                 </section>
-                                <section class="ap-block">
-                                    <div class="ap-block-label">Reasoning</div>
-                                    <div class="ap-scroll"><pre id="agentplayground_reasoning_a" class="ap-reasoning-empty">null</pre></div>
-                                </section>
+                                <details class="ap-reasoning">
+                                    <summary>Reasoning</summary>
+                                    <pre id="agentplayground_reasoning_a" class="ap-reasoning-empty">null</pre>
+                                </details>
                             </div>
                         </article>
 
@@ -783,10 +235,10 @@
                                     <div class="ap-block-label">Diff vs Original</div>
                                     <div id="agentplayground_diff_b" class="ap-scroll ap-diff">No result yet.</div>
                                 </section>
-                                <section class="ap-block">
-                                    <div class="ap-block-label">Reasoning</div>
-                                    <div class="ap-scroll"><pre id="agentplayground_reasoning_b" class="ap-reasoning-empty">null</pre></div>
-                                </section>
+                                <details class="ap-reasoning">
+                                    <summary>Reasoning</summary>
+                                    <pre id="agentplayground_reasoning_b" class="ap-reasoning-empty">null</pre>
+                                </details>
                             </div>
                         </article>
                     </div>
@@ -795,6 +247,93 @@
         </div>
     </main>
 
+    <!-- Config Drawer -->
+    <div class="drawer-handle" id="drawerHandle">⟩</div>
+    <div class="config-drawer hidden" id="agentplayground_config">
+        <div class="drawer-head">Config</div>
+        <div class="ap-field ap-field--full">
+            <label for="agentplayground_config_select">Saved Configs</label>
+            <select id="agentplayground_config_select" class="ap-select"></select>
+        </div>
+        <div class="ap-field ap-field--full">
+            <label for="agentplayground_config_label">Config Name</label>
+            <input id="agentplayground_config_label" class="ap-input" type="text" placeholder="e.g. OpenRouter Sonnet">
+        </div>
+        <div class="ap-field ap-field--full">
+            <label for="agentplayground_provider_url">Provider</label>
+            <input id="agentplayground_provider_url" class="ap-input" type="url" placeholder="https://openrouter.ai/api/v1">
+        </div>
+        <div class="ap-field">
+            <label for="agentplayground_model_a"><span id="agentplayground_model_a_label">Model A</span></label>
+            <div class="ap-combobox" id="agentplayground_model_a_combo">
+                <input id="agentplayground_model_a" class="ap-input ap-combobox-input" type="text" placeholder="select or type a model id" autocomplete="off" spellcheck="false">
+                <div class="ap-combobox-list displayNone" id="agentplayground_model_a_list"></div>
+            </div>
+        </div>
+        <div class="ap-field" id="agentplayground_model_b_field">
+            <label for="agentplayground_model_b">Model B</label>
+            <div class="ap-combobox" id="agentplayground_model_b_combo">
+                <input id="agentplayground_model_b" class="ap-input ap-combobox-input" type="text" placeholder="select or type a model id" autocomplete="off" spellcheck="false">
+                <div class="ap-combobox-list displayNone" id="agentplayground_model_b_list"></div>
+            </div>
+        </div>
+        <div class="ap-field ap-field--full">
+            <label for="agentplayground_provider_key">API Key</label>
+            <input id="agentplayground_provider_key" class="ap-input" type="password" placeholder="Stored server-side after save">
+        </div>
+        <div class="ap-actions" style="margin-top: auto">
+            <button id="agentplayground_save_config" class="ap-button">Save Config</button>
+            <button id="agentplayground_new_config" class="ap-button">+ New</button>
+            <button id="agentplayground_delete_config" class="ap-button">Delete</button>
+            <span id="agentplayground_key_state" class="ap-status">API key not saved yet.</span>
+            <span id="agentplayground_status" class="ap-status">Ready.</span>
+        </div>
+    </div>
+
+    <script>
+        // Config drawer toggle
+        const drawer = document.getElementById('agentplayground_config');
+        const handle = document.getElementById('drawerHandle');
+        const configBtn = document.getElementById('agentplayground_config_toggle');
+        const isMobile = window.innerWidth <= 1100;
+        // Drawer starts hidden. Position the handle to its collapsed (right-edge) anchor.
+        if (isMobile) {
+            handle.textContent = '▲';
+        } else {
+            handle.textContent = '⟩';
+        }
+        handle.classList.add('handle-right');
+        function toggleDrawer() {
+            drawer.classList.toggle('hidden');
+            const hidden = drawer.classList.contains('hidden');
+            if (window.innerWidth <= 1100) {
+                handle.textContent = hidden ? '▲' : '▼';
+            } else {
+                handle.textContent = hidden ? '⟩' : '⟨';
+            }
+            handle.classList.toggle('handle-right', hidden);
+            if (configBtn) configBtn.classList.toggle('is-active', !hidden);
+        }
+        handle.addEventListener('click', toggleDrawer);
+        if (configBtn) configBtn.addEventListener('click', toggleDrawer);
+
+        // Mode toggle click handlers
+        document.querySelectorAll('.ap-mode-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.ap-mode-btn').forEach(b => b.classList.remove('is-active'));
+                btn.classList.add('is-active');
+                const pillsRow = document.querySelector('.ap-pills-row');
+                if (pillsRow) pillsRow.classList.toggle('is-test', btn.dataset.mode === 'test');
+            });
+        });
+
+        // Ctrl+Enter keyboard shortcut
+        document.addEventListener('keydown', e => {
+            if (e.ctrlKey && e.key === 'Enter') {
+                document.getElementById('agentplayground_run').click();
+            }
+        });
+    </script>
     <script type="module" src="/scripts/agent-playground.js"></script>
 </body>
 </html>

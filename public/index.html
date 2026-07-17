@@ -5814,146 +5814,48 @@
             </div>
             <div id="AgentsPanel" class="drawer-content closedDrawer">
                 <div id="AgentsPanelheader" class="fa-solid fa-grip drag-grabber"></div>
-                <div class="agents-panel-hero flex-container alignitemscenter gap10px spaceBetween flexWrap">
-                    <div class="flex-container flexFlowColumn gap4px minWidth0">
-                        <div class="agents-panel-kicker">✦ Agents Control ✦</div>
-                        <h3 class="margin0">
-                            <span data-i18n="Agents">Agents</span>
-                        </h3>
-                        <small class="text_muted" data-i18n="Agents are AI helpers that can inject context before generation, transform final replies after generation, or run manually.">Agents are AI helpers that can inject context before generation, transform final replies after generation, or run manually.</small>
+                <div class="ap-header">
+                    <div class="ap-header-left">
+                        <div class="ap-header-icon"><i class="fa-solid fa-robot"></i></div>
+                        <div class="ap-header-info">
+                            <span class="ap-header-title">✦ AGENTS <span>CONTROL</span> ✦</span>
+                            <span class="ap-header-count" id="agents_header_count"><strong>0</strong> / <span>0</span> enabled</span>
+                        </div>
                     </div>
-                    <div class="agents-header-actions flex-container flexWrap gap10px alignitemscenter">
-                        <label class="checkbox_label flexNoGap agents-global-toggle" for="agents_global_enabled" title="Enable or disable all agents" data-i18n="[title]Enable or disable all agents">
-                            <input id="agents_global_enabled" type="checkbox">
-                            <span data-i18n="Enable Agents">Enable Agents</span>
+                    <div class="ap-header-actions">
+                        <label class="ap-pill" id="agents_global_enable_wrapper" title="Enable or disable all agents" data-i18n="[title]Enable or disable all agents">
+                            <input id="agents_global_enabled" type="checkbox" hidden>
+                            <span class="ap-toggle-dot"></span>
+                            <span data-i18n="Enable All">Enable All</span>
                         </label>
-                        <label class="agents-header-token-control" title="Minimum assistant reply tokens before post/manual agents run">
-                            <span data-i18n="Minimum Assistant Reply Tokens">Min Tokens</span>
-                            <input id="agents_global_min_tokens" class="text_pole" type="number" min="0" max="100000" step="1">
-                        </label>
-                        <div id="agents_new_agent" class="menu_button menu_button_icon agents-header-button" title="Create a new agent" data-i18n="[title]Create a new agent">
+                        <div id="agents_new_agent" class="ap-pill" title="Create a new agent" data-i18n="[title]Create a new agent">
                             <i class="fa-solid fa-plus"></i>
                             <span data-i18n="New Agent">New Agent</span>
                         </div>
-                        <a id="agents_open_playground" class="menu_button menu_button_icon agents-header-button" href="/agentplayground" target="_blank" rel="noopener noreferrer" title="Open Agent Playground" onclick="(function(){try{const chid=window.main_chid;const av=chid!=null&&window.characters&&window.characters[chid]?window.characters[chid].avatar:'';const file=window.chat_filename||'';const q=new URLSearchParams();if(av)q.set('avatar',av);if(file)q.set('file',file);this.href='/agentplayground'+(q.toString()?'?'+q.toString():'');}catch(e){this.href='/agentplayground';}})()">
-                            <i class="fa-solid fa-up-right-from-square"></i>
-                            <span>Open Playground</span>
-                        </a>
-                        <div id="agents_refresh_profiles" class="menu_button menu_button_icon agents-header-button" title="Refresh connection profiles" data-i18n="[title]Refresh connection profiles">
+                        <div id="agents_refresh_profiles" class="ap-pill ap-pill-secondary" title="Refresh connection profiles" data-i18n="[title]Refresh connection profiles">
                             <i class="fa-solid fa-rotate"></i>
-                            <span data-i18n="Refresh Profiles">Refresh Profiles</span>
+                            <span>Refresh</span>
                         </div>
+                        <a id="agents_open_playground" class="ap-pill ap-pill-secondary" href="/agentplayground" target="_blank" rel="noopener noreferrer" title="Open Agent Playground" onclick="(function(){try{const chid=window.main_chid;const av=chid!=null&&window.characters&&window.characters[chid]?window.characters[chid].avatar:'';const file=window.chat_filename||'';const q=new URLSearchParams();if(av)q.set('avatar',av);if(file)q.set('file',file);this.href='/agentplayground'+(q.toString()?'?'+q.toString():'');}catch(e){this.href='/agentplayground';}})()">
+                            <i class="fa-solid fa-up-right-from-square"></i>
+                            <span>Playground</span>
+                        </a>
                     </div>
                 </div>
-                <div id="agents_holder" class="margin5 flex-container flexFlowColumn gap10px">
-                    <small class="text_muted agents-min-token-helper">Post/manual agents skip assistant replies shorter than the min token setting. Set to 0 to disable.</small>
-                    <div id="agents_editor" class="agents-editor displayNone">
-                        <div class="agents-editor-header flex-container alignitemscenter gap10px spaceBetween flexWrap">
-                            <h4 class="margin0" data-i18n="Agent Editor">Agent Editor</h4>
-                            <span class="agents-editor-status">Editing</span>
-                        </div>
-                        <input id="agents_editor_id" type="hidden">
-                        <div class="flex-container flexWrap gap10px">
-                            <label class="flex-container flexFlowColumn gap4px flex1 minWidth250px">
-                                <small data-i18n="Name">Name</small>
-                                <input id="agents_editor_name" class="text_pole" type="text" placeholder="Agent name" data-i18n="[placeholder]Agent name">
-                            </label>
-                            <label class="flex-container flexFlowColumn gap4px flex1 minWidth250px">
-                                <small data-i18n="Phase">Phase</small>
-                                <select id="agents_editor_phase" class="text_pole">
-                                    <option value="pre" data-i18n="Pre-generation">Pre-generation</option>
-                                    <option value="post" data-i18n="Post-generation">Post-generation</option>
-                                    <option value="manual" data-i18n="Manual only">Manual only</option>
-                                </select>
-                            </label>
-                        </div>
-                        <label class="flex-container flexFlowColumn gap4px">
-                            <small data-i18n="Description">Description</small>
-                            <input id="agents_editor_description" class="text_pole" type="text" placeholder="Optional description" data-i18n="[placeholder]Optional description">
-                        </label>
-                        <label class="flex-container flexFlowColumn gap4px">
-                            <small data-i18n="Connection Profile">Connection Profile</small>
-                            <select id="agents_editor_connection_profile" class="text_pole"></select>
-                        </label>
-                        <label class="flex-container flexFlowColumn gap4px">
-                            <small data-i18n="Agent Prompt">Agent Prompt</small>
-                            <textarea id="agents_editor_prompt" class="text_pole textarea_compact" rows="8" placeholder="Tell this agent what to do. Supports normal SillyTavern macros." data-i18n="[placeholder]Tell this agent what to do. Supports normal SillyTavern macros."></textarea>
-                        </label>
-                        <div class="flex-container flexWrap gap10px">
-                            <label class="checkbox_label"><input id="agents_editor_enabled" type="checkbox"> <span data-i18n="Enabled">Enabled</span></label>
-                            <label class="checkbox_label"><input id="agents_editor_include_chat" type="checkbox"> <span data-i18n="Chat">Chat</span></label>
-                            <label class="checkbox_label"><input id="agents_editor_include_character" type="checkbox"> <span data-i18n="Character">Character</span></label>
-                            <label class="checkbox_label"><input id="agents_editor_include_persona" type="checkbox"> <span data-i18n="Persona">Persona</span></label>
-                            <label class="checkbox_label"><input id="agents_editor_include_world_info" type="checkbox"> <span data-i18n="World Info">World Info</span></label>
-                            <label class="checkbox_label"><input id="agents_editor_include_main_reply" type="checkbox"> <span data-i18n="Main Reply">Main Reply</span></label>
-                        </div>
-                        <div class="flex-container flexWrap gap10px">
-                            <label class="flex-container flexFlowColumn gap4px flex1 minWidth200px">
-                                <small data-i18n="Output Mode">Output Mode</small>
-                                <select id="agents_editor_output_type" class="text_pole">
-                                    <option value="inject" data-i18n="Inject hidden context">Inject hidden context</option>
-                                    <option value="rewrite" data-i18n="Rewrite message">Rewrite message</option>
-                                    <option value="append" data-i18n="Append to message">Append to message</option>
-                                    <option value="metadata" data-i18n="Save metadata only">Save metadata only</option>
-                                    <option value="patch" data-i18n="Patch message (find/replace)">Patch message (find/replace)</option>
-                                </select>
-                            </label>
-                            <label id="agents_output_role_wrap" class="flex-container flexFlowColumn gap4px flex1 minWidth200px">
-                                <small data-i18n="Injection Role">Injection Role</small>
-                                <select id="agents_editor_output_role" class="text_pole">
-                                    <option value="system" data-i18n="System">System</option>
-                                    <option value="user" data-i18n="User">User</option>
-                                    <option value="assistant" data-i18n="Assistant">Assistant</option>
-                                </select>
-                            </label>
-                            <label id="agents_store_key_wrap" class="flex-container flexFlowColumn gap4px flex1 minWidth200px">
-                                <small data-i18n="Metadata Key">Metadata Key</small>
-                                <input id="agents_editor_store_key" class="text_pole" type="text" placeholder="agent_result" data-i18n="[placeholder]agent_result">
-                            </label>
-                        </div>
-                        <div id="agents_structured_wrap" class="flex-container flexWrap gap10px alignitemscenter">
-                            <label class="checkbox_label"><input id="agents_editor_output_structured" type="checkbox"> <span>Structured JSON revision output</span></label>
-                            <small class="text_muted">Lets later post agents see what earlier passes changed and what should not be reintroduced.</small>
-                        </div>
-                        <div id="agents_patch_hint" class="flex-container flexFlowColumn gap4px displayNone">
-                            <small class="text_muted" data-i18n="Patch mode: the model emits a JSON 'patches' array of {find, replace} hunks. Untouched text is preserved automatically, so it only outputs the snippets it changes. Each 'find' must match the message text exactly or that hunk is skipped.">Patch mode: the model emits a JSON 'patches' array of {find, replace} hunks. Untouched text is preserved automatically, so it only outputs the snippets it changes. Each 'find' must match the message text exactly or that hunk is skipped.</small>
-                        </div>
-                        <div class="flex-container flexWrap gap10px">
-                            <label class="flex-container flexFlowColumn gap4px flex1 minWidth200px">
-                                <small data-i18n="Max Tokens">Max Tokens</small>
-                                <input id="agents_editor_max_tokens" class="text_pole" type="number" min="0" max="16000" step="1">
-                            </label>
-                            <label class="flex-container flexFlowColumn gap4px flex1 minWidth200px">
-                                <small data-i18n="Past Context Messages">Past Context Messages</small>
-                                <input id="agents_editor_past_message_count" class="text_pole" type="number" min="0" max="50" step="1">
-                            </label>
-                            <label class="flex-container flexFlowColumn gap4px flex1 minWidth200px">
-                                <small data-i18n="Retries">Retries</small>
-                                <input id="agents_editor_retries" class="text_pole" type="number" min="0" max="10" step="1">
-                            </label>
-                        </div>
-                        <div class="agents-advanced-settings flex-container flexFlowColumn gap6px">
-                            <small class="text_muted agents-section-caption">Advanced run conditions</small>
-                            <div class="flex-container flexWrap gap10px">
-                                <label class="checkbox_label"><input id="agents_editor_only_group_chats" type="checkbox"> <span>Groups only</span></label>
-                                <label class="checkbox_label"><input id="agents_editor_only_character_chats" type="checkbox"> <span>1:1 chats only</span></label>
-                                <label class="checkbox_label"><input id="agents_editor_skip_swipe" type="checkbox"> <span>Skip swipes</span></label>
-                                <label class="checkbox_label"><input id="agents_editor_skip_continue" type="checkbox"> <span>Skip continue</span></label>
-                                <label class="checkbox_label"><input id="agents_editor_skip_impersonate" type="checkbox"> <span>Skip impersonate</span></label>
-                                <label class="checkbox_label"><input id="agents_editor_skip_quiet" type="checkbox"> <span>Skip quiet draft runs</span></label>
-                            </div>
-                        </div>
-                        <div class="flex-container gap10px">
-                            <div id="agents_save_agent" class="menu_button menu_button_icon">
-                                <i class="fa-solid fa-save"></i>
-                                <span data-i18n="Save">Save</span>
-                            </div>
-                            <div id="agents_cancel_edit" class="menu_button menu_button_icon">
-                                <i class="fa-solid fa-xmark"></i>
-                                <span data-i18n="Cancel">Cancel</span>
-                            </div>
-                        </div>
+                <div class="ap-toolbar">
+                    <input id="agents_search" class="text_pole ap-search" type="text" placeholder="Search agents..." data-i18n="[placeholder]Search agents...">
+                    <div class="ap-chips" id="agents_phase_chips">
+                        <span class="ap-chip active" data-phase="all">All</span>
+                        <span class="ap-chip" data-phase="pre">Pre</span>
+                        <span class="ap-chip" data-phase="post">Post</span>
+                        <span class="ap-chip" data-phase="manual">Manual</span>
                     </div>
+                    <label class="ap-min-tokens" title="Minimum assistant reply tokens before post/manual agents run">
+                        <span data-i18n="Min Tokens">Min Tokens</span>
+                        <input id="agents_global_min_tokens" class="text_pole" type="number" min="0" max="100000" step="1">
+                    </label>
+                </div>
+                <div id="agents_holder" class="margin5">
                     <div id="agents_list" class="agents-list flex-container flexFlowColumn gap10px"></div>
                 </div>
             </div>
@@ -6695,6 +6597,117 @@
                 </div>
                 <div class="popup-button-close right_menu_button fa-solid fa-circle-xmark" data-result="0" title="Close popup" data-i18n="[title]Close popup"></div>
             </dialog>
+        </template>
+        <template id="agents_editor_template">
+            <div class="ae-edit-popup">
+                <input id="agents_editor_id" type="hidden">
+                <input id="agents_editor_enabled" type="checkbox" style="display:none" checked>
+                <!-- Identity row -->
+                <div class="ae-row-2">
+                    <div class="ae-field">
+                        <label data-i18n="Name">Name</label>
+                        <input id="agents_editor_name" class="text_pole" type="text" placeholder="Agent name" data-i18n="[placeholder]Agent name">
+                    </div>
+                    <div class="ae-field">
+                        <label data-i18n="Phase">Phase</label>
+                        <select id="agents_editor_phase" class="text_pole">
+                            <option value="pre" data-i18n="Pre-generation">Pre-generation</option>
+                            <option value="post" data-i18n="Post-generation">Post-generation</option>
+                            <option value="manual" data-i18n="Manual only">Manual only</option>
+                        </select>
+                    </div>
+                </div>
+                <!-- Description -->
+                <div class="ae-field">
+                    <label data-i18n="Description">Description</label>
+                    <input id="agents_editor_description" class="text_pole" type="text" placeholder="Optional description" data-i18n="[placeholder]Optional description">
+                </div>
+                <!-- Connection Profile -->
+                <div class="ae-field">
+                    <label data-i18n="Connection Profile">Connection Profile</label>
+                    <select id="agents_editor_connection_profile" class="text_pole"></select>
+                </div>
+                <!-- Agent Prompt -->
+                <div class="ae-field ae-field-md">
+                    <label data-i18n="Agent Prompt">Agent Prompt</label>
+                    <textarea id="agents_editor_prompt" class="text_pole textarea_compact" rows="8" placeholder="Tell this agent what to do. Supports normal SillyTavern macros." data-i18n="[placeholder]Tell this agent what to do. Supports normal SillyTavern macros."></textarea>
+                </div>
+                <!-- Section: Input Context -->
+                <div class="ae-section"><span data-i18n="Input Context">Input Context</span></div>
+                <div class="ae-chips ae-chips-input">
+                    <label class="ae-chip"><input id="agents_editor_include_chat" type="checkbox"> <span data-i18n="Chat">Chat</span></label>
+                    <label class="ae-chip"><input id="agents_editor_include_character" type="checkbox"> <span data-i18n="Character">Character</span></label>
+                    <label class="ae-chip"><input id="agents_editor_include_persona" type="checkbox"> <span data-i18n="Persona">Persona</span></label>
+                    <label class="ae-chip"><input id="agents_editor_include_world_info" type="checkbox"> <span data-i18n="World Info">World Info</span></label>
+                    <label class="ae-chip"><input id="agents_editor_include_main_reply" type="checkbox"> <span data-i18n="Main Reply">Main Reply</span></label>
+                </div>
+                <!-- Section: Output Configuration -->
+                <div class="ae-section"><span data-i18n="Output Configuration">Output Configuration</span></div>
+                <div class="ae-row-3">
+                    <div class="ae-field">
+                        <label data-i18n="Output Mode">Output Mode</label>
+                        <select id="agents_editor_output_type" class="text_pole">
+                            <option value="inject" data-i18n="Inject hidden context">Inject hidden context</option>
+                            <option value="rewrite" data-i18n="Rewrite message">Rewrite message</option>
+                            <option value="append" data-i18n="Append to message">Append to message</option>
+                            <option value="metadata" data-i18n="Save metadata only">Save metadata only</option>
+                            <option value="patch" data-i18n="Patch message (find/replace)">Patch message (find/replace)</option>
+                        </select>
+                    </div>
+                    <div id="agents_output_role_wrap" class="ae-field">
+                        <label data-i18n="Injection Role">Injection Role</label>
+                        <select id="agents_editor_output_role" class="text_pole">
+                            <option value="system" data-i18n="System">System</option>
+                            <option value="user" data-i18n="User">User</option>
+                            <option value="assistant" data-i18n="Assistant">Assistant</option>
+                        </select>
+                    </div>
+                    <div id="agents_store_key_wrap" class="ae-field">
+                        <label data-i18n="Metadata Key">Metadata Key</label>
+                        <input id="agents_editor_store_key" class="text_pole" type="text" placeholder="agent_result" data-i18n="[placeholder]agent_result">
+                    </div>
+                </div>
+                <div id="agents_structured_wrap" class="ae-chip" style="margin-bottom:0;">
+                    <input id="agents_editor_output_structured" type="checkbox"> <span data-i18n="Structured JSON revision output">Structured JSON revision output</span>
+                </div>
+                <small id="agents_patch_hint" class="ae-hint displayNone" data-i18n="Patch mode: the model emits a JSON 'patches' array of {find, replace} hunks. Untouched text is preserved automatically, so it only outputs the snippets it changes. Each 'find' must match the message text exactly or that hunk is skipped.">Patch mode: the model emits a JSON 'patches' array of {find, replace} hunks. Untouched text is preserved automatically, so it only outputs the snippets it changes. Each 'find' must match the message text exactly or that hunk is skipped.</small>
+                <!-- Section: Advanced -->
+                <div class="ae-section"><span data-i18n="Advanced">Advanced</span></div>
+                <div class="ae-row-3">
+                    <div class="ae-field">
+                        <label data-i18n="Max Tokens">Max Tokens</label>
+                        <input id="agents_editor_max_tokens" class="text_pole" type="number" min="0" max="16000" step="1">
+                    </div>
+                    <div class="ae-field">
+                        <label data-i18n="Past Context Messages">CTX (Msgs)</label>
+                        <input id="agents_editor_past_message_count" class="text_pole" type="number" min="0" max="50" step="1">
+                    </div>
+                    <div class="ae-field">
+                        <label data-i18n="Retries">Retries</label>
+                        <input id="agents_editor_retries" class="text_pole" type="number" min="0" max="10" step="1">
+                    </div>
+                </div>
+                <!-- Section: Run Conditions -->
+                <div class="ae-section"><span data-i18n="Run Conditions">Run Conditions</span></div>
+                <div class="ae-chips ae-chips-3col">
+                    <label class="ae-chip"><input id="agents_editor_only_group_chats" type="checkbox"> <span data-i18n="Groups only">Groups only</span></label>
+                    <label class="ae-chip"><input id="agents_editor_only_character_chats" type="checkbox"> <span data-i18n="1:1 chats only">1:1 chats only</span></label>
+                    <label class="ae-chip"><input id="agents_editor_skip_swipe" type="checkbox"> <span data-i18n="Skip swipes">Skip swipes</span></label>
+                    <label class="ae-chip"><input id="agents_editor_skip_continue" type="checkbox"> <span data-i18n="Skip continue">Skip continue</span></label>
+                    <label class="ae-chip"><input id="agents_editor_skip_impersonate" type="checkbox"> <span data-i18n="Skip impersonate">Skip impersonate</span></label>
+                    <label class="ae-chip"><input id="agents_editor_skip_quiet" type="checkbox"> <span data-i18n="Skip quiet draft runs">Skip quiet draft runs</span></label>
+                </div>
+                <div class="ae-footer">
+                    <div id="agents_cancel_edit" class="ae-btn ae-btn-secondary">
+                        <i class="fa-solid fa-xmark"></i>
+                        <span data-i18n="Cancel">Cancel</span>
+                    </div>
+                    <div id="agents_save_agent" class="ae-btn ae-btn-primary">
+                        <i class="fa-solid fa-floppy-disk"></i>
+                        <span data-i18n="Save">Save</span>
+                    </div>
+                </div>
+            </div>
         </template>
         <div id="shadow_popup">
             <div id="dialogue_popup">

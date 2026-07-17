@@ -18,7 +18,7 @@ import {
 import { extension_settings } from './extensions.js';
 import { ConnectionManagerRequestService } from './extensions/shared.js';
 import { selected_group } from './group-chats.js';
-import { Popup } from './popup.js';
+import { Popup, POPUP_TYPE, POPUP_RESULT } from './popup.js';
 import { power_user } from './power-user.js';
 import { SlashCommandParser } from './slash-commands/SlashCommandParser.js';
 import { SlashCommand } from './slash-commands/SlashCommand.js';
@@ -1078,76 +1078,82 @@ function renderAgentCard(agent) {
     const profileName = getConnectionProfiles().find(profile => profile.id === agent.connectionProfileId)?.name
         || (agent.connectionProfileId ? agent.connectionProfileId : 'Selected profile');
     const conditionBadges = getConditionBadges(agent);
+    const phaseLabel = getPhaseLabel(agent.phase);
+    // Only show non-duplicate badges (phase+profile shown in card-meta)
     const badges = [
-        { text: getPhaseLabel(agent.phase), extraClass: `agents-badge-phase-${escapeHtmlAttr(agent.phase)}` },
         { text: getOutputLabel(agent), extraClass: 'agents-badge-output' },
-        { text: profileName, extraClass: 'agents-badge-profile' },
         { text: getInputModeSummary(agent), extraClass: 'agents-badge-input' },
         ...conditionBadges.map(text => ({ text, extraClass: 'agents-badge-condition' })),
     ];
 
-    const expandedClass = agent.expanded ? '' : ' agents-card-collapsed';
-    const detailsHiddenClass = agent.expanded ? '' : ' displayNone';
+    const cardAvatarIcon = getDefaultAgentIcon(agent);
+    const escapedName = escapeHtmlText(agent.name || 'Untitled Agent');
+    const escapedDesc = escapeHtmlText(agent.description || '');
+    const enabledClass = agent.enabled ? 'enabled' : '';
+
+    const isTouchDevice = window.matchMedia('(pointer: coarse)').matches;
+    const expandedClass = '';
+    const collapseBtnAria = 'false';
 
     const card = $(
-        `<div class="agents-card flex-container flexFlowColumn gap8px${expandedClass}" data-agent-id="${escapeHtmlAttr(agent.id)}">
-            <div class="agents-card-header flex-container alignitemscenter gap10px spaceBetween">
-                <div class="flex-container alignitemscenter gap10px flex1 minWidth0">
-                    <div class="agents-drag-handle menu_button menu_button_icon" title="Drag to reorder">
-                        <i class="fa-solid fa-grip-vertical"></i>
+        `<div class="agents-card ${enabledClass} ${expandedClass}" data-agent-id="${escapeHtmlAttr(agent.id)}">
+            <div class="card-h">
+                <div class="agents-drag-handle menu_button menu_button_icon" title="Drag to reorder">
+                    <i class="fa-solid fa-grip-vertical"></i>
+                </div>
+                <button type="button" class="card-collapse-btn" title="Toggle details" aria-expanded="${collapseBtnAria}">
+                    <i class="fa-solid fa-chevron-right"></i>
+                </button>
+                <div class="card-avatar ${agent.enabled ? '' : 'off'}">
+                    <i class="${cardAvatarIcon}"></i>
+                </div>
+                <div class="card-info">
+                    <div class="card-name ${agent.enabled ? '' : 'muted'}">${escapedName}</div>
+                    <div class="card-meta">
+                        <span class="phase-badge phase-${escapeHtmlAttr(agent.phase)}">${escapeHtmlText(phaseLabel)}</span>
+                        <span class="profile-tag"><i class="fa-solid fa-bolt"></i>${escapeHtmlText(profileName)}</span>
                     </div>
-                    <button type="button" class="agents-card-toggle menu_button menu_button_icon" aria-expanded="${agent.expanded ? 'true' : 'false'}">
-                        <i class="fa-solid ${agent.expanded ? 'fa-chevron-down' : 'fa-chevron-right'}"></i>
-                    </button>
-                    <div class="flex-container flexFlowColumn minWidth0 flex1 agents-card-titlewrap">
-                        <strong class="agents-card-title">${escapeHtmlText(agent.name || 'Untitled Agent')}</strong>
-                        <small class="text_muted agents-card-description">${escapeHtmlText(agent.description || 'No description')}</small>
-                    </div>
                 </div>
-                <div class="flex-container alignitemscenter gap10px flexWrap justifyEnd agents-card-header-right">
-                    <label class="checkbox_label flexNoGap agents-card-enabled-toggle">
-                        <input class="agents-card-enabled" type="checkbox" ${agent.enabled ? 'checked' : ''}>
-                        <span>${agent.enabled ? 'Enabled' : 'Disabled'}</span>
-                    </label>
-                </div>
+                <label class="card-toggle">
+                    <input class="agents-card-enabled" type="checkbox" ${agent.enabled ? 'checked' : ''}>
+                    <span class="toggle-track"><span class="knob"></span></span>
+                    <span>${agent.enabled ? 'ON' : 'OFF'}</span>
+                </label>
             </div>
-            <div class="flex-container flexWrap gap8px agents-card-badges">
-                ${badges.map(badge => `<small class="agents-badge ${badge.extraClass}">${escapeHtmlText(badge.text)}</small>`).join('')}
+            <div class="agents-card-badges">
+                ${badges.map(badge => `<span class="agents-badge ${badge.extraClass}">${escapeHtmlText(badge.text)}</span>`).join('')}
             </div>
-            <div class="agents-card-body${detailsHiddenClass}">
-                <div class="agents-card-actions flex-container gap10px flexWrap">
-                    <div class="menu_button menu_button_icon agents-edit-agent"><i class="fa-solid fa-pencil"></i><span>Edit</span></div>
-                    <div class="menu_button menu_button_icon agents-test-agent"><i class="fa-solid fa-vial"></i><span>Test on latest reply</span></div>
-                    <div class="menu_button menu_button_icon agents-run-agent"><i class="fa-solid fa-play"></i><span>Run now</span></div>
-                    <div class="menu_button menu_button_icon caution agents-delete-agent"><i class="fa-solid fa-trash"></i><span>Delete</span></div>
-                </div>
-                <div class="agents-card-meta flex-container flexWrap gap10px">
-                    <small class="text_muted">Generation: ${escapeHtmlText(getGenerationTypeLabel(activeGenerationState?.type || 'normal'))}</small>
-                    <small class="text_muted">Max tokens: ${escapeHtmlText(agent.maxTokens)}</small>
-                    <small class="text_muted">Past messages: ${escapeHtmlText(agent.pastMessageCount)}</small>
-                    <small class="text_muted">Retries: ${escapeHtmlText(agent.retries ?? 0)}</small>
-                </div>
+            <div class="card-desc ${agent.enabled ? '' : 'muted'}">${escapedDesc}</div>
+            <div class="card-acts">
+                <span class="ibtn agents-edit-agent" title="Edit"><i class="fa-solid fa-pen"></i></span>
+                <span class="ibtn agents-run-agent" title="Run now"><i class="fa-solid fa-play"></i></span>
+                <span class="ibtn danger agents-delete-agent" title="Delete"><i class="fa-solid fa-trash-can"></i></span>
             </div>
         </div>`,
     );
 
     card.find('.agents-card-enabled').on('change', function () {
         agent.enabled = $(this).prop('checked');
+        // Update visual state immediately
+        card.toggleClass('enabled', agent.enabled);
+        card.find('.card-avatar').toggleClass('off', !agent.enabled);
+        card.find('.card-name').toggleClass('muted', !agent.enabled);
+        card.find('.card-desc').toggleClass('muted', !agent.enabled);
+        card.find('.card-toggle span').last().text(agent.enabled ? 'ON' : 'OFF');
         upsertAgent(agent);
     });
 
-    card.find('.agents-card-toggle').on('click', function () {
-        const nextExpanded = !agent.expanded;
-        agent.expanded = nextExpanded;
-        updateAgentExpanded(agent.id, nextExpanded);
-        card.toggleClass('agents-card-collapsed', !nextExpanded);
-        card.find('.agents-card-body').toggleClass('displayNone', !nextExpanded);
-        $(this).attr('aria-expanded', nextExpanded ? 'true' : 'false');
-        $(this).find('i').attr('class', `fa-solid ${nextExpanded ? 'fa-chevron-down' : 'fa-chevron-right'}`);
+    card.find('.card-collapse-btn').on('click', function (e) {
+        e.stopPropagation();
+        const isExpanded = card.hasClass('expanded');
+        card.toggleClass('expanded');
+        $(this).attr('aria-expanded', !isExpanded);
     });
 
-    card.find('.agents-edit-agent').on('click', () => openAgentEditor(agent.id));
-    card.find('.agents-test-agent').on('click', async () => await runSingleAgentAgainstLatestMessage(agent.id));
+    card.find('.agents-edit-agent').on('click', (e) => {
+        e.stopPropagation();
+        openAgentEditor(agent.id);
+    });
     card.find('.agents-run-agent').on('click', async () => await runManualAgent(agent.id));
     card.find('.agents-delete-agent').on('click', async () => {
         const confirmed = await Popup.show.confirm('Delete Agent', `Delete agent "${agent.name || 'Untitled Agent'}"?`);
@@ -1156,7 +1162,30 @@ function renderAgentCard(agent) {
         }
     });
 
+    // Mobile: tap card body to expand/collapse (toggle is stopPropagation'd)
+    card.on('click', function (e) {
+        // Only on touch/coarse-pointer devices
+        if (window.matchMedia('(pointer: coarse)').matches) {
+            // Don't toggle when clicking the toggle, buttons, or drag handle
+            const $target = $(e.target);
+            if ($target.closest('.card-toggle, .ibtn, .agents-drag-handle').length) {
+                return;
+            }
+            $(this).toggleClass('expanded');
+        }
+    });
+
     return card;
+}
+
+const AGENT_PHASE_ICONS = {
+    pre: 'fa-solid fa-brain',
+    post: 'fa-solid fa-wand-magic-sparkles',
+    manual: 'fa-solid fa-hand-pointer',
+};
+
+function getDefaultAgentIcon(agent) {
+    return AGENT_PHASE_ICONS[agent.phase] || 'fa-solid fa-robot';
 }
 
 function initAgentsSortable() {
@@ -1204,20 +1233,59 @@ function renderAgentsList() {
     list.empty();
     const agents = getAgents().slice().sort((a, b) => Number(a.priority) - Number(b.priority));
 
-    if (!agents.length) {
-        list.append('<div class="text_muted">No agents created yet.</div>');
+    // Update header count
+    const total = agents.length;
+    const enabled = agents.filter(a => a.enabled).length;
+    const $count = $('#agents_header_count');
+    if ($count.length) {
+        $count.find('strong').text(enabled);
+        $count.find('span').first().text(total);
+    }
+
+    // Apply active filters
+    const activePhase = String($('#agents_phase_chips .ap-chip.active').data('phase') || 'all');
+    const searchQuery = String($('#agents_search').val() || '').toLowerCase().trim();
+    const filtered = agents.filter(agent => {
+        if (activePhase !== 'all' && agent.phase !== activePhase) return false;
+        if (searchQuery) {
+            const name = (agent.name || '').toLowerCase();
+            const desc = (agent.description || '').toLowerCase();
+            if (!name.includes(searchQuery) && !desc.includes(searchQuery)) return false;
+        }
+        return true;
+    });
+
+    if (!filtered.length) {
+        list.append(
+            '<div class="agents-empty"><i class="fa-solid fa-robot"></i><p>' +
+            (agents.length === 0 ? 'No agents created yet. Click <strong>+ New Agent</strong> to get started.' : 'No agents match your current filters.') +
+            '</p></div>',
+        );
         return;
     }
 
-    for (const agent of agents) {
+    for (const agent of filtered) {
         list.append(renderAgentCard(agent));
     }
 
     initAgentsSortable();
 }
 
+function updateAgentCount() {
+    const agents = getAgents();
+    const total = agents.length;
+    const enabled = agents.filter(a => a.enabled).length;
+    const $count = $('#agents_header_count');
+    if ($count.length) {
+        $count.find('strong').text(enabled);
+        $count.find('span').first().text(total);
+    }
+}
+
+let editorPopup = null;
+
 function setEditorVisible(visible) {
-    $('#agents_editor').toggleClass('displayNone', !visible);
+    if (!visible) closeAgentEditor();
 }
 
 function syncOutputModeUi() {
@@ -1393,29 +1461,66 @@ function readEditorAgent() {
 }
 
 function openAgentEditor(agentId = null) {
-    populateConnectionProfileSelects();
-    const agent = agentId ? getAgents().find(entry => entry.id === agentId) : createDefaultAgent();
-    fillEditor(agent || createDefaultAgent());
-    const $editor = $('#agents_editor');
-    if (agentId) {
-        const $card = $(`#agents_list [data-agent-id="${CSS.escape(agentId)}"]`);
-        // Replace the source card's slot with the editor so it appears in place,
-        // not floated at the top of the panel.
-        $card.addClass('displayNone');
-        $editor.insertBefore($card);
-    } else {
-        // New agent: drop the editor at the end of the list.
-        $editor.insertAfter('#agents_list');
+    try {
+        if (editorPopup) {
+            editorPopup.close();
+            editorPopup = null;
+        }
+
+        const templateEl = document.getElementById('agents_editor_template');
+        if (!templateEl) {
+            toastr.error('Editor template not found', 'Agents');
+            return;
+        }
+        const content = templateEl.innerHTML;
+
+        const popup = new Popup(content, POPUP_TYPE.TEXT, '', {
+            okButton: false,
+            cancelButton: false,
+            large: true,
+            onOpen: (self) => {
+                editorPopup = self;
+                populateConnectionProfileSelects();
+                const agent = agentId ? getAgents().find(entry => entry.id === agentId) : createDefaultAgent();
+                fillEditor(agent || createDefaultAgent());
+                self.dlg.querySelector('#agents_editor_name')?.blur();
+
+                $(self.dlg).find('#agents_save_agent').on('click', () => {
+                    const a = readEditorAgent();
+                    if (!a.name.trim()) {
+                        toastr.warning('Agent name is required.', 'Agents');
+                        return;
+                    }
+                    if (!a.prompt.trim()) {
+                        toastr.warning('Agent prompt is required.', 'Agents');
+                        return;
+                    }
+                    upsertAgent(a);
+                    self.complete(POPUP_RESULT.AFFIRMATIVE);
+                    editorPopup = null;
+                });
+
+                $(self.dlg).find('#agents_cancel_edit').on('click', () => {
+                    self.complete(POPUP_RESULT.CANCELLED);
+                    editorPopup = null;
+                });
+
+                $(self.dlg).find('#agents_editor_output_type').on('change', syncOutputModeUi);
+            }
+        });
+
+        popup.show();
+    } catch (err) {
+        console.error('openAgentEditor failed:', err);
+        toastr.error('Failed to open agent editor: ' + err.message, 'Agents');
     }
-    setEditorVisible(true);
 }
 
 function closeAgentEditor() {
-    // Restore the editor to its original spot (before the list, inside the holder)
-    // and un-hide any card that was hidden while editing.
-    $('#agents_list [data-agent-id]').removeClass('displayNone');
-    $('#agents_editor').insertBefore('#agents_list');
-    setEditorVisible(false);
+    if (editorPopup) {
+        editorPopup.complete(POPUP_RESULT.CANCELLED);
+        editorPopup = null;
+    }
 }
 
 function bindUi() {
@@ -1430,25 +1535,20 @@ function bindUi() {
         saveAgentsSettings();
     });
 
+    // Search filter
+    $('#agents_search').on('input', function () {
+        renderAgentsList();
+    });
+
+    // Phase chip filter
+    $(document).on('click', '#agents_phase_chips .ap-chip', function () {
+        $('#agents_phase_chips .ap-chip').removeClass('active');
+        $(this).addClass('active');
+        renderAgentsList();
+    });
+
     $('#agents_new_agent').on('click', () => openAgentEditor());
     $('#agents_refresh_profiles').on('click', populateConnectionProfileSelects);
-    $('#agents_editor_output_type').on('change', syncOutputModeUi);
-    $('#agents_save_agent').on('click', () => {
-        const agent = readEditorAgent();
-        if (!agent.name.trim()) {
-            toastr.warning('Agent name is required.', 'Agents');
-            return;
-        }
-
-        if (!agent.prompt.trim()) {
-            toastr.warning('Agent prompt is required.', 'Agents');
-            return;
-        }
-
-        upsertAgent(agent);
-        closeAgentEditor();
-    });
-    $('#agents_cancel_edit').on('click', closeAgentEditor);
 }
 
 function syncUiFromSettings() {

@@ -17,14 +17,14 @@
             --hard-shadow: 0 0 0 1px rgba(0,0,0,0.4), 4px 4px 0 0 rgba(0,0,0,0.45);
         }
         * { box-sizing: border-box }
-        body.agent-playground-body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--body); min-height: 100vh; padding: 12px }
+        body.agent-playground-body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--body); height: 100vh; padding: 12px; overflow-y: auto }
         .ap-shell { min-height: 100vh; box-sizing: border-box }
         .ap { background: linear-gradient(180deg, var(--bg2), var(--bg)); border-radius: 10px; border: 1px solid var(--border); overflow: hidden; box-shadow: var(--hard-shadow); min-height: calc(100vh - 24px) }
         .ap-topbar { display: flex; align-items: center; gap: 12px; padding: 10px 16px; background: rgba(34,19,42,0.6); border-bottom: 1px solid var(--border-pk); flex-wrap: wrap; min-height: 44px; justify-content: center }
         .ap-topbar-title { color: var(--pk); font-size: 11px; letter-spacing: 2px; text-transform: uppercase; font-family: var(--pixel); text-shadow: 0 0 8px rgba(241,77,166,0.5); flex-basis: 100%; text-align: center }
         .ap-pill { background: var(--bg3); border: 1px solid var(--border); border-radius: 5px; padding: 4px 8px; font-size: 11px; color: var(--lt); display: inline-flex; align-items: center; gap: 6px; min-height: 28px; font-family: var(--body) }
         .ap-pill-dot { width: 6px; height: 6px; border-radius: 999px; background: var(--pk); flex: 0 0 auto }
-        .ap-layout { display: grid; grid-template-columns: 260px 1fr; height: calc(100vh - 70px) }
+        .ap-layout { display: grid; grid-template-columns: 260px 1fr; min-height: calc(100vh - 70px) }
         .ap-sidebar { background: rgba(26,14,31,0.4); border-right: 1px solid var(--border); padding: 14px; display: flex; flex-direction: column; gap: 12px }
         .ap-section-label { font-family: var(--pixel); font-size: 8px; color: var(--text2); letter-spacing: 2px; text-transform: uppercase; padding-bottom: 6px; border-bottom: 1px dashed var(--border); display: flex; justify-content: space-between }
         .ap-agents-list { display: flex; flex-direction: column; gap: 8px }
@@ -65,10 +65,10 @@
         .ap-panel-model { font-family: var(--pixel); font-size: 10px; color: var(--pk); text-transform: uppercase; letter-spacing: 1.5px; text-shadow: 0 0 8px rgba(241,77,166,0.45) }
         .ap-panel-badge { margin-left: auto; font-family: var(--pixel); font-size: 8px; padding: 3px 8px; border: 1px solid var(--border); color: var(--text2); background: var(--bg3); border-radius: 3px; text-transform: uppercase; letter-spacing: 0.5px }
         .ap-panel-badge.done { color: var(--green); border-color: var(--green); background: rgba(125,218,125,0.1) }
-        .ap-panel-body { flex: 1; padding: 12px 14px; overflow: auto; display: flex; flex-direction: column; gap: 12px; min-height: 0 }
+        .ap-panel-body { flex: 1; padding: 12px 14px; display: flex; flex-direction: column; gap: 12px; min-height: 0 }
         .ap-block { display: block }
         .ap-block-label { font-family: var(--pixel); font-size: 8px; color: var(--text2); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 6px }
-        .ap-scroll { min-height: auto }
+        .ap-scroll { min-height: auto; max-height: 50vh; overflow-y: auto }
         .ap-scroll pre, .ap-scroll { font-family: var(--term); font-size: 16px; line-height: 1.45; color: var(--text) }
         .ap-scroll pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word }
         .ap-diff { white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word }
@@ -105,9 +105,11 @@
 
         @media (max-width: 1100px) {
             .ap-layout { grid-template-columns: 1fr }
-            .ap-sidebar { border-right: none; border-bottom: 1px solid var(--border) }
+            .ap-sidebar { border-right: none; border-bottom: 1px solid var(--border); gap: 6px; padding: 10px }
+            .ap-sidebar .ap-stat { padding: 5px 8px }
             .ap-panels { grid-template-columns: 1fr; grid-template-rows: repeat(2, minmax(0, 1fr)); grid-auto-rows: minmax(0, 1fr) }
             .ap-panels.is-single { grid-template-rows: minmax(0, 1fr) }
+            .ap-context-strip { padding: 8px 12px; gap: 4px }
             .ap-topbar { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; align-items: stretch }
             .ap-topbar > * { min-width: 0 }
             .ap-topbar-title { grid-column: 1 / -1 }

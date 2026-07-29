@@ -655,6 +655,9 @@ function charaFormatData(data, directories) {
         }
     }
 
+    // Ensure data.world from the form field takes precedence over stale client extensions data
+    _.set(char, 'data.extensions.world', data.world || '');
+
     return char;
 }
 

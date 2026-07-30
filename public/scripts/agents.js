@@ -75,7 +75,7 @@ function createDefaultAgent() {
             skipSwipe: false,
             skipContinue: false,
             skipImpersonate: true,
-            skipQuiet: false,
+            impersonateOnly: false,
         },
         priority: DEFAULT_AGENT_PRIORITY,
         maxTokens: DEFAULT_AGENT_MAX_TOKENS,
@@ -251,10 +251,10 @@ function getConditionBadges(agent) {
     const badges = [];
     if (agent.conditions.onlyGroupChats) badges.push('Groups only');
     if (agent.conditions.onlyCharacterChats) badges.push('1:1 only');
+    if (agent.conditions.impersonateOnly) badges.push('Impersonate only');
     if (agent.conditions.skipSwipe) badges.push('Skip swipes');
     if (agent.conditions.skipContinue) badges.push('Skip continue');
     if (agent.conditions.skipImpersonate) badges.push('Skip impersonate');
-    if (agent.conditions.skipQuiet) badges.push('Skip quiet');
     return badges;
 }
 
@@ -270,6 +270,10 @@ function shouldRunAgent(agent, generationType = 'normal', source = 'manual') {
         return false;
     }
 
+    if (conditions.impersonateOnly && normalizedType !== 'impersonate') {
+        return false;
+    }
+
     if (conditions.skipSwipe && normalizedType === 'swipe') {
         return false;
     }
@@ -279,10 +283,6 @@ function shouldRunAgent(agent, generationType = 'normal', source = 'manual') {
     }
 
     if (conditions.skipImpersonate && normalizedType === 'impersonate') {
-        return false;
-    }
-
-    if (conditions.skipQuiet && source === 'draft') {
         return false;
     }
 
@@ -406,13 +406,13 @@ function buildRevisionHistoryXml(revisionContext) {
     return `<revision_history>\n<previous_passes>\n${passXml}\n</previous_passes>\n<do_not_reintroduce>${forbiddenXml}\n</do_not_reintroduce>\n<notes_for_next_pass>${notesXml}\n</notes_for_next_pass>\n</revision_history>`;
 }
 
-function buildAgentContext(agent, { message = null, messageId = null, generationType = '', source = '', revisionContext = null } = {}) {
+function buildAgentContext(agent, { message = null, messageId = null, generationType = '', source = '', revisionContext = null, overrideText = '' } = {}) {
     const character = getCurrentCharacter();
     const personaDescription = typeof power_user !== 'undefined' ? String(power_user.persona_description ?? '') : '';
     const worldInfoText = agent.inputMode.includeWorldInfo
         ? String(chat_metadata?.world_info ?? '')
         : '';
-    const messageText = stripTrackerBlocks(getFallbackAssistantText(message, revisionContext));
+    const messageText = stripTrackerBlocks(overrideText || getFallbackAssistantText(message, revisionContext));
     const mainReply = agent.inputMode.includeMainReply ? messageText : '';
     const contextMessageId = Number.isInteger(Number(revisionContext?.messageId))
         ? Number(revisionContext.messageId)
@@ -977,6 +977,91 @@ export async function runPostAgentsForDraft(messageId, generationType = 'normal'
     });
 }
 
+export async function runPostAgentsOnText(inputText, generationType = 'normal') {
+    const agents = getEnabledAgentsByPhases(['post', 'manual'])
+        .filter(agent => shouldRunAgent(agent, generationType, 'post'));
+    if (!agents.length) return inputText;
+
+    const lastAssistantId = getLastAssistantMessageId();
+    const lastAssistantIndex = Number.isInteger(lastAssistantId) ? lastAssistantId : (chat.length - 1);
+    const lastMessage = Number.isInteger(lastAssistantId) ? chat[lastAssistantId] : null;
+    const contextMessageId = chat.length;
+
+    let currentText = inputText;
+    let progressToast = null;
+
+    for (const [index, agent] of agents.entries()) {
+        if (progressToast) toastr.clear(progressToast);
+        const progressMessage = index === 0
+            ? `Message has been passed to agent "${agent.name || 'Unnamed Agent'}", please wait...`
+            : `Agent ${index}/${agents.length} finished. Passing message to "${agent.name || 'Unnamed Agent'}"...`;
+        progressToast = showPostAgentProgressToast(progressMessage, 'Agents');
+
+        const revisionContext = {
+            messageId: contextMessageId,
+            originalMessage: currentText,
+            currentMessage: currentText,
+            passes: [],
+            forbiddenAddBack: [],
+            notesForNextPass: [],
+        };
+
+        const context = buildAgentContext(agent, {
+            message: lastMessage ?? null,
+            messageId: contextMessageId,
+            generationType,
+            source: 'post',
+            revisionContext,
+            overrideText: currentText,
+        });
+
+        const result = await runAgentCompletionWithRetries(agent, context, {
+            validateStructured: Boolean(agent.outputMode?.structured),
+            validateMinTokens: false,
+            sourceLabel: 'Post agent (impersonate)',
+        });
+
+        if (!result) continue;
+
+        const structured = agent.outputMode.structured ? parseStructuredAgentResult(result) : null;
+        let effectiveResult = '';
+
+        if (agent.outputMode.type === 'patch' && structured?.patches) {
+            let working = decodeHtmlEntities(currentText);
+            for (const patch of structured.patches) {
+                const find = String(patch.find ?? '');
+                const replace = String(patch.replace ?? '');
+                if (!find) continue;
+                const idx = working.indexOf(find);
+                if (idx === -1) continue;
+                working = working.slice(0, idx) + replace + working.slice(idx + find.length);
+            }
+            effectiveResult = working;
+        } else if (structured && ['rewrite', 'append'].includes(agent.outputMode.type)) {
+            effectiveResult = decodeHtmlEntities(String(structured.revised_message ?? ''));
+        } else if (result) {
+            effectiveResult = decodeHtmlEntities(String(result));
+        }
+
+        if (effectiveResult) currentText = effectiveResult;
+    }
+
+    if (progressToast) {
+        toastr.clear(progressToast);
+    }
+
+    const changed = currentText !== inputText;
+
+    toastr.info(
+        changed
+            ? 'Post-processing complete. Final text revised by agent(s).'
+            : 'Post-processing complete. No agent changes were needed.',
+        'Agents',
+    );
+
+    return currentText;
+}
+
 async function runSingleAgentAgainstLatestMessage(agentId) {
     const agent = getAgents().find(entry => entry.id === agentId);
     if (!agent) {
@@ -1328,10 +1413,10 @@ function fillEditor(agent) {
     $('#agents_editor_retries').val(normalized.retries ?? 0);
     $('#agents_editor_only_group_chats').prop('checked', normalized.conditions.onlyGroupChats);
     $('#agents_editor_only_character_chats').prop('checked', normalized.conditions.onlyCharacterChats);
+    $('#agents_editor_impersonate_only').prop('checked', normalized.conditions.impersonateOnly);
     $('#agents_editor_skip_swipe').prop('checked', normalized.conditions.skipSwipe);
     $('#agents_editor_skip_continue').prop('checked', normalized.conditions.skipContinue);
     $('#agents_editor_skip_impersonate').prop('checked', normalized.conditions.skipImpersonate);
-    $('#agents_editor_skip_quiet').prop('checked', normalized.conditions.skipQuiet);
     syncOutputModeUi();
 }
 
@@ -1447,10 +1532,10 @@ function readEditorAgent() {
         conditions: {
             onlyGroupChats: $('#agents_editor_only_group_chats').prop('checked'),
             onlyCharacterChats: $('#agents_editor_only_character_chats').prop('checked'),
+            impersonateOnly: $('#agents_editor_impersonate_only').prop('checked'),
             skipSwipe: $('#agents_editor_skip_swipe').prop('checked'),
             skipContinue: $('#agents_editor_skip_continue').prop('checked'),
             skipImpersonate: $('#agents_editor_skip_impersonate').prop('checked'),
-            skipQuiet: $('#agents_editor_skip_quiet').prop('checked'),
         },
         maxTokens: $('#agents_editor_max_tokens').val() === ''
             ? DEFAULT_AGENT_MAX_TOKENS

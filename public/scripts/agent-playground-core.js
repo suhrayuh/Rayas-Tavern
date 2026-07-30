@@ -40,7 +40,7 @@ export function normalizeAgent(rawAgent = {}) {
             skipSwipe: false,
             skipContinue: false,
             skipImpersonate: true,
-            skipQuiet: false,
+            impersonateOnly: false,
         },
         priority: DEFAULT_AGENT_PRIORITY,
         maxTokens: DEFAULT_AGENT_MAX_TOKENS,
@@ -88,7 +88,7 @@ export function normalizeAgent(rawAgent = {}) {
             skipSwipe: Boolean(rawAgent?.conditions?.skipSwipe ?? defaults.conditions.skipSwipe),
             skipContinue: Boolean(rawAgent?.conditions?.skipContinue ?? defaults.conditions.skipContinue),
             skipImpersonate: Boolean(rawAgent?.conditions?.skipImpersonate ?? defaults.conditions.skipImpersonate),
-            skipQuiet: Boolean(rawAgent?.conditions?.skipQuiet ?? defaults.conditions.skipQuiet),
+            impersonateOnly: Boolean(rawAgent?.conditions?.impersonateOnly ?? defaults.conditions.impersonateOnly),
         },
         priority: Number.isFinite(Number(rawAgent.priority)) ? Number(rawAgent.priority) : defaults.priority,
         maxTokens: Number.isFinite(Number(rawAgent.maxTokens))

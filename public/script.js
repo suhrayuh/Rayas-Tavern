@@ -277,7 +277,7 @@ import { clearItemizedPrompts, deleteItemizedPromptForMessage, deleteItemizedPro
 import { getSystemMessageByType, initSystemMessages, SAFETY_CHAT, sendSystemMessage, system_message_types, system_messages } from './scripts/system-messages.js';
 import { event_types, eventSource } from './scripts/events.js';
 import { initAccessibility } from './scripts/a11y.js';
-import { initAgents, runPostAgentsForDraft } from './scripts/agents.js';
+import { initAgents, runPostAgentsForDraft, runPostAgentsOnText } from './scripts/agents.js';
 import { initCustomModels } from './scripts/custom-models.js';
 import { applyStreamFadeIn } from './scripts/util/stream-fadein.js';
 import { initDomHandlers } from './scripts/dom-handlers.js';
@@ -3863,7 +3863,10 @@ class StreamingProcessor {
             await eventSource.emit(event_types.MESSAGE_RECEIVED, this.messageId, this.type);
             await eventSource.emit(event_types.CHARACTER_MESSAGE_RENDERED, this.messageId, this.type);
         } else {
-            await eventSource.emit(event_types.IMPERSONATE_READY, text);
+            const processedText = await runPostAgentsOnText(text, 'impersonate');
+            this.sendTextarea.value = processedText;
+            this.sendTextarea.dispatchEvent(new Event('input', { bubbles: true }));
+            await eventSource.emit(event_types.IMPERSONATE_READY, processedText);
         }
 
         updateSwipeCounter(messageId, { message, messageElement });
@@ -5587,8 +5590,9 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
         });
 
         if (isImpersonate) {
-            $('#send_textarea').val(getMessage)[0].dispatchEvent(new Event('input', { bubbles: true }));
-            await eventSource.emit(event_types.IMPERSONATE_READY, getMessage);
+            const processedMessage = await runPostAgentsOnText(getMessage, 'impersonate');
+            $('#send_textarea').val(processedMessage)[0].dispatchEvent(new Event('input', { bubbles: true }));
+            await eventSource.emit(event_types.IMPERSONATE_READY, processedMessage);
         } else if (type == 'quiet') {
             unblockGeneration(type);
             return getMessage;
